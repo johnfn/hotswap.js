@@ -9,8 +9,52 @@ for (var i = 0; i < scripts.length; i++) {
 
 uris = ["test.js"];
 
+var isArray = function(o) {
+    return Object.prototype.toString.call(o) === '[object Array]';
+}
+
+var parseVariableDeclsForFunctionNames = function(decls) {
+    var results = [];
+
+    for (var i = 0; i < decls.length; i++) {
+        var decl = decls[i];
+
+        if (decl.type == "VariableDeclarator" && decl.init.type == "FunctionExpression") {
+            results.push(decl.id.name);
+        }
+    }
+
+    return results;
+};
+
+var findFunctionDecls = function(ast) {
+    var decls = [];
+
+    if (isArray(ast)) {
+        for (var i = 0; i < ast.length; i++) {
+            Array.prototype.push.apply(decls, findFunctionDecls(ast[i]));
+        }
+
+        return decls;
+    }
+
+    if (ast.type === "VariableDeclaration") {
+        return parseVariableDeclsForFunctionNames(ast.declarations);
+    }
+
+    if (ast.body) {
+        return findFunctionDecls(ast.body);
+    }
+
+    return [];
+};
+
 var instrument = function(script) {
-  var syntax = esprima.parse('var answer = 42');
+  var syntax = esprima.parse(script);
+
+  console.log(JSON.stringify(syntax, null, 2));
+
+  console.log(findFunctionDecls(syntax));
 };
 
 var scan = function() {
@@ -20,6 +64,8 @@ var scan = function() {
 
     if (!loaded_scripts[uri]) {
       loaded_scripts[uri] = script;
+
+      instrument(script);
     } else {
       if (loaded_scripts[uri] != script) {
         console.log("reload of " + uri);
