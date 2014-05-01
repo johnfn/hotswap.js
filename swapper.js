@@ -7,6 +7,12 @@ for (var i = 0; i < scripts.length; i++) {
 	uris.push(scripts[i].getAttribute('src'));
 }
 
+uris = ["test.js"];
+
+var instrument = function(script) {
+	var syntax = esprima.parse('var answer = 42');
+};
+
 var scan = function() {
 	for (var i = 0; i < uris.length; i++) {
 		var uri = uris[i];
