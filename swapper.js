@@ -2,6 +2,7 @@
 var scripts = document.getElementsByTagName("script");
 var uris = [];
 var loaded_scripts = {};
+var function_name_to_lookup = {};
 
 for (var i = 0; i < scripts.length; i++) {
   uris.push(scripts[i].getAttribute('src'));
@@ -9,11 +10,11 @@ for (var i = 0; i < scripts.length; i++) {
 
 uris = ["test.js"];
 
-var isArray = function(o) {
+var is_array = function(o) {
     return Object.prototype.toString.call(o) === '[object Array]';
 }
 
-var parseVariableDeclsForFunctionNames = function(decls) {
+var parse_variable_decls_for_function_names = function(decls) {
     var results = [];
 
     for (var i = 0; i < decls.length; i++) {
@@ -27,34 +28,50 @@ var parseVariableDeclsForFunctionNames = function(decls) {
     return results;
 };
 
-var findFunctionDecls = function(ast) {
-    var decls = [];
-
-    if (isArray(ast)) {
-        for (var i = 0; i < ast.length; i++) {
-            Array.prototype.push.apply(decls, findFunctionDecls(ast[i]));
-        }
-
-        return decls;
+var uid=0;
+var get_lookup = function(name) {
+    if (! (name in function_name_to_lookup)) {
+        function_name_to_lookup[name] = "FN_" + uid;
+        ++uid;
     }
 
+    return function_name_to_lookup[name];
+}
+
+var instrument_ast = function(ast) {
+    var decls = [];
+
     if (ast.type === "VariableDeclaration") {
-        return parseVariableDeclsForFunctionNames(ast.declarations);
+        var fn_names = parse_variable_decls_for_function_names(ast.declarations);
+
+        if (fn_names.length > 1)  {
+            console.err("wat, i can't do multiple definitions in the same declaration block... go away.");
+        }
+
+        var fn_name = fn_names[0];
+        var rightside = escodegen.generate(ast.declarations[0].init);
+        var leftside = "FN_TABLE[" + get_lookup(fn_name) + "]";
+
+        var gen = esprima.parse(leftside + "=" + rightside);
+
+        for (var key in ast) delete ast[key];
+        for (var key in gen.body[0]) ast[key] = gen.body[0][key];
+
+        return;
     }
 
     if (ast.body) {
-        return findFunctionDecls(ast.body);
+        for (var i = 0; i < ast.body.length; i++) {
+            instrument_ast(ast.body[i]);
+        }
     }
-
-    return [];
 };
 
 var instrument = function(script) {
   var syntax = esprima.parse(script);
 
-  console.log(JSON.stringify(syntax, null, 2));
-
-  console.log(findFunctionDecls(syntax));
+  instrument_ast(syntax);
+  console.log(escodegen.generate(syntax));
 };
 
 var scan = function() {
