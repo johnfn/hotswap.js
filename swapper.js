@@ -41,14 +41,11 @@ var get_lookup = function(name) {
 var instrument_ast = function(ast) {
     var decls = [];
 
-    console.log(ast.type);
     if (ast.type == "Identifier") {
         var lookup = get_lookup(ast.name);
 
-        console.log("try " + ast.name + " get " + get_lookup(ast.name));
-
         if (lookup) {
-            ast.name = lookup;
+            ast.name = "FN_TABLE['" + lookup + "']";
         }
 
         return;
@@ -69,7 +66,7 @@ var instrument_ast = function(ast) {
 
         var fn_name = fn_names[0];
         var rightside = escodegen.generate(ast.declarations[0].init);
-        var leftside = "FN_TABLE[" + get_lookup(fn_name) + "]";
+        var leftside = "FN_TABLE['" + get_lookup(fn_name) + "']";
 
         var gen = esprima.parse(leftside + "=" + rightside);
 
@@ -93,13 +90,49 @@ var instrument_ast = function(ast) {
 };
 
 var instrument = function(script) {
-  var syntax = esprima.parse(script);
+  var syntax = esprima.parse(script, {loc: true});
 
   console.log(JSON.stringify(syntax, null, 2));
   //return;
 
   instrument_ast(syntax);
   console.log(escodegen.generate(syntax));
+  //console.log(JSON.stringify(function_name_to_lookup));
+};
+
+var get_change_location = function(new_script, old_script) {
+    // Find line and column differences.
+
+    var new_lines = new_script.split("\n");
+    var old_lines = old_script.split("\n");
+    var line = -1;
+    var column = -1;
+
+    for (line = 0; line < Math.min(new_lines.length, old_lines.length); line++) {
+        if (new_lines[line] != old_lines[line]) {
+            break;
+        }
+    }
+
+    var new_line = new_lines[line];
+    var old_line = old_lines[line];
+
+    ++line; // lines are 1-indexed.
+    
+    for (column = 0; column < Math.min(new_line.length, old_line.length); column++) {
+        if (new_line[column] != old_line[column]) {
+            break;
+        }
+    }
+
+    console.log("line: " + line + " column: " + column);
+}
+
+var reload = function(new_script, old_script) {
+    // Attempt to find the location at which they differ, then walk the AST and find the corresponding node and mark it.
+    // Then, find the enclosing function, rewrite it and reload it into the FN_TABLE.
+
+    get_change_location(new_script, old_script);
 };
 
 var scan = function() {
@@ -114,6 +147,8 @@ var scan = function() {
     } else {
       if (loaded_scripts[uri] != script) {
         console.log("reload of " + uri);
+
+        reload(script, loaded_scripts[uri]);
 
         loaded_scripts[uri] = script;
       }

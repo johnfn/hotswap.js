@@ -2,6 +2,6 @@ var f = function() {
     console.log("normal");
 };
 
-var g = function() {};
+var g = function() {}; 
 
 setInterval(f, 1000);
