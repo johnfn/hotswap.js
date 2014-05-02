@@ -41,6 +41,25 @@ var get_lookup = function(name) {
 var instrument_ast = function(ast) {
     var decls = [];
 
+    console.log(ast.type);
+    if (ast.type == "Identifier") {
+        var lookup = get_lookup(ast.name);
+
+        console.log("try " + ast.name + " get " + get_lookup(ast.name));
+
+        if (lookup) {
+            ast.name = lookup;
+        }
+
+        return;
+    }
+
+    if (ast.type == "ExpressionStatement") {
+        instrument_ast(ast.expression);
+
+        return;
+    }
+
     if (ast.type === "VariableDeclaration") {
         var fn_names = parse_variable_decls_for_function_names(ast.declarations);
 
@@ -65,10 +84,19 @@ var instrument_ast = function(ast) {
             instrument_ast(ast.body[i]);
         }
     }
+
+    if (ast.arguments) {
+        for (var i = 0; i < ast.arguments.length; i++) {
+            instrument_ast(ast.arguments[i]);
+        }
+    }
 };
 
 var instrument = function(script) {
   var syntax = esprima.parse(script);
+
+  console.log(JSON.stringify(syntax, null, 2));
+  //return;
 
   instrument_ast(syntax);
   console.log(escodegen.generate(syntax));
