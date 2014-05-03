@@ -1,4 +1,3 @@
-
 var scripts = document.getElementsByTagName("script");
 var uris = [];
 var loaded_scripts = {};
@@ -35,7 +34,7 @@ var parse_variable_decls_for_function_names = function(decls) {
 };
 
 var uid=0;
-var get_lookup = function(name) {
+var get_lookup = function(name) { // TODO needs a rename
     if (! (name in function_name_to_lookup)) {
         function_name_to_lookup[name] = "FN_" + uid;
         ++uid;
@@ -99,11 +98,14 @@ var instrument = function(script) {
   var syntax = esprima.parse(script);
 
   console.log(JSON.stringify(syntax, null, 2));
-  //return;
 
   instrument_ast(syntax);
-  console.log(escodegen.generate(syntax));
-  //console.log(JSON.stringify(function_name_to_lookup));
+
+  var instrumented_file = "var FN_TABLE = {};\n" + escodegen.generate(syntax);
+
+  console.log(instrumented_file);
+
+  return instrumented_file;
 };
 
 var get_change_location = function(new_script, old_script) {
@@ -138,8 +140,6 @@ var get_change_location = function(new_script, old_script) {
 
 // returned changed fn.
 var find_changed_function = function(ast, line, col) {
-    var result;
-
     assert(line != undefined); assert(col != undefined);
 
     var loc = ast.loc;
@@ -188,7 +188,15 @@ var reload = function(new_script, old_script) {
 
     var ast = esprima.parse(new_script, {loc: true});
 
-    console.log(escodegen.generate(find_changed_function(ast, line_column[0], line_column[1])));
+    var changed_function_ast = find_changed_function(ast, line_column[0], line_column[1]);
+
+    var fn_body = escodegen.generate(changed_function_ast.declarations[0].init);
+    var fn_name = changed_function_ast.declarations[0].id.name;
+    var table_name = get_lookup(fn_name);
+
+    FN_TABLE[table_name] = eval("x =" + fn_body); // "x = " is a hack to make it return the value. function declarations dont generally return anything. 
+
+    //need to rewrite to use FN_TABLE via instrument()
 };
 
 var scan = function() {
@@ -199,7 +207,7 @@ var scan = function() {
     if (!loaded_scripts[uri]) {
       loaded_scripts[uri] = script;
 
-      instrument(script);
+      $.globalEval(instrument(script));
     } else {
       if (loaded_scripts[uri] != script) {
         console.log("reload of " + uri);
@@ -212,6 +220,10 @@ var scan = function() {
       }
     }
   }
+};
+
+var hotswap = function(script) {
+    uris.push(script);
 };
 
 setInterval(scan, 100);
