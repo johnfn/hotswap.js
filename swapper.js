@@ -10,6 +10,12 @@ for (var i = 0; i < scripts.length; i++) {
 
 uris = ["test.js"];
 
+function assert(condition, message) {
+    if (!condition) {
+        throw message || "Assertion failed";
+    }
+}
+
 var is_array = function(o) {
     return Object.prototype.toString.call(o) === '[object Array]';
 }
@@ -134,11 +140,15 @@ var get_change_location = function(new_script, old_script) {
 var find_changed_function = function(ast, line, col) {
     var result;
 
+    assert(line != undefined); assert(col != undefined);
+
     var loc = ast.loc;
     var good = (loc.start.line <= line && loc.end.line >= line);
     if (line == loc.start.line && loc == loc.end.line) {
         good == good && (loc.start.col <= col && loc.end.col >= col)
     }
+
+    if (!good) return;
 
     if (ast.declarations && ast.declarations.length > 1) {
         console.err("holy crap multiple declarations time to die"); //TODO
@@ -150,7 +160,7 @@ var find_changed_function = function(ast, line, col) {
 
     if (ast.body) {
         for (var i = 0; i < ast.body.length; i++) {
-            var result = find_changed_function(ast.body[i]);
+            var result = find_changed_function(ast.body[i], line, col);
 
             if (result) return result;
         }
@@ -158,7 +168,7 @@ var find_changed_function = function(ast, line, col) {
 
     if (ast.arguments) {
         for (var i = 0; i < ast.arguments.length; i++) {
-            var result = find_changed_function(ast.arguments[i]);
+            var result = find_changed_function(ast.arguments[i], line, col);
 
             if (result) return result;
         }
@@ -178,7 +188,7 @@ var reload = function(new_script, old_script) {
 
     var ast = esprima.parse(new_script, {loc: true});
 
-    console.log(escodegen.generate(find_changed_function(ast)));
+    console.log(escodegen.generate(find_changed_function(ast, line_column[0], line_column[1])));
 };
 
 var scan = function() {
