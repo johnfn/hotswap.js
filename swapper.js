@@ -90,7 +90,7 @@ var instrument_ast = function(ast) {
 };
 
 var instrument = function(script) {
-  var syntax = esprima.parse(script, {loc: true});
+  var syntax = esprima.parse(script);
 
   console.log(JSON.stringify(syntax, null, 2));
   //return;
@@ -118,7 +118,7 @@ var get_change_location = function(new_script, old_script) {
     var old_line = old_lines[line];
 
     ++line; // lines are 1-indexed.
-    
+
     for (column = 0; column < Math.min(new_line.length, old_line.length); column++) {
         if (new_line[column] != old_line[column]) {
             break;
@@ -126,13 +126,59 @@ var get_change_location = function(new_script, old_script) {
     }
 
     console.log("line: " + line + " column: " + column);
+
+    return [line, column];
+}
+
+// returned changed fn.
+var find_changed_function = function(ast, line, col) {
+    var result;
+
+    var loc = ast.loc;
+    var good = (loc.start.line <= line && loc.end.line >= line);
+    if (line == loc.start.line && loc == loc.end.line) {
+        good == good && (loc.start.col <= col && loc.end.col >= col)
+    }
+
+    if (ast.declarations && ast.declarations.length > 1) {
+        console.err("holy crap multiple declarations time to die"); //TODO
+    }
+
+    if (ast.type == "VariableDeclaration" && ast.declarations[0].init.type == "FunctionExpression") {
+        return ast;
+    }
+
+    if (ast.body) {
+        for (var i = 0; i < ast.body.length; i++) {
+            var result = find_changed_function(ast.body[i]);
+
+            if (result) return result;
+        }
+    }
+
+    if (ast.arguments) {
+        for (var i = 0; i < ast.arguments.length; i++) {
+            var result = find_changed_function(ast.arguments[i]);
+
+            if (result) return result;
+        }
+    }
+
+    console.log("fail to parse:: ", ast);
+    return;
 }
 
 var reload = function(new_script, old_script) {
     // Attempt to find the location at which they differ, then walk the AST and find the corresponding node and mark it.
     // Then, find the enclosing function, rewrite it and reload it into the FN_TABLE.
 
-    get_change_location(new_script, old_script);
+    // A slightly better way to do this would be to directly diff the ASTs...
+
+    var line_column = get_change_location(new_script, old_script);
+
+    var ast = esprima.parse(new_script, {loc: true});
+
+    console.log(escodegen.generate(find_changed_function(ast)));
 };
 
 var scan = function() {
@@ -148,9 +194,11 @@ var scan = function() {
       if (loaded_scripts[uri] != script) {
         console.log("reload of " + uri);
 
-        reload(script, loaded_scripts[uri]);
+        var old_script = loaded_scripts[uri];
 
         loaded_scripts[uri] = script;
+
+        reload(script, old_script);
       }
     }
   }
