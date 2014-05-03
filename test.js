@@ -1,10 +1,12 @@
+var g = function() { console.log("dfg"); }; 
+
 var f = function() {
     console.log("normal");
 
-    //console.log("fff");
+    console.log("fff");
+
+    //g();
 };
 
-var g = function() { console.log("dfg"); }; 
-
 // Needs to be wrapped because otherwise it'd store a stale reference.
-setInterval(function() { FN_TABLE['FN_0'](); } , 1000);
+setInterval(function() { f(); } , 1000);

@@ -33,16 +33,28 @@ var parse_variable_decls_for_function_names = function(decls) {
     return results;
 };
 
-var uid=0;
 var get_lookup = function(name) { // TODO needs a rename
+    return function_name_to_lookup[name];
+}
+
+var uid=0;
+var put_lookup = function(name) {
     if (! (name in function_name_to_lookup)) {
         function_name_to_lookup[name] = "FN_" + uid;
         ++uid;
+    } else {
+        console.err("function " + name + " previously defined. I not smart enough to deal with this case yet.");
     }
 
     return function_name_to_lookup[name];
 }
 
+/*
+ The task of instrument_ast is to replace all references to functions within AST with references to our table of functions instead. 
+ This allows us to hotswap in a new function later if required.
+
+ It's a destructive modification of the ast; it doesn't return anything.
+ */
 var instrument_ast = function(ast) {
     var decls = [];
 
@@ -62,6 +74,17 @@ var instrument_ast = function(ast) {
         return;
     }
 
+    if (ast.type == "CallExpression") {
+      instrument_ast(ast.callee);
+      
+      if (ast.arguments) {
+          for (var i = 0; i < ast.arguments.length; i++) {
+              instrument_ast(ast.arguments[i]);
+          }
+      }
+    }
+
+
     if (ast.type === "VariableDeclaration") {
         var fn_names = parse_variable_decls_for_function_names(ast.declarations);
 
@@ -70,8 +93,9 @@ var instrument_ast = function(ast) {
         }
 
         var fn_name = fn_names[0];
+        instrument_ast(ast.declarations[0].init);
         var rightside = escodegen.generate(ast.declarations[0].init);
-        var leftside = "FN_TABLE['" + get_lookup(fn_name) + "']";
+        var leftside = "FN_TABLE['" + put_lookup(fn_name) + "']";
 
         var gen = esprima.parse(leftside + "=" + rightside);
 
@@ -81,27 +105,34 @@ var instrument_ast = function(ast) {
         return;
     }
 
-    if (ast.body) {
-        for (var i = 0; i < ast.body.length; i++) {
-            instrument_ast(ast.body[i]);
+    if (ast.type == "Program") {
+        if (ast.body) {
+            for (var i = 0; i < ast.body.length; i++) {
+                instrument_ast(ast.body[i]);
+            }
         }
     }
 
-    if (ast.arguments) {
-        for (var i = 0; i < ast.arguments.length; i++) {
-            instrument_ast(ast.arguments[i]);
+    if (ast.type == "FunctionExpression") {
+        if (ast.body && ast.body.body) {
+            for (var i = 0; i < ast.body.body.length; i++) {
+                instrument_ast(ast.body.body[i]);
+            }
         }
     }
+
 };
 
-var instrument = function(script) {
+var instrument = function(script, first_time) {
+  if (!first_time) first_time = false;
+
   var syntax = esprima.parse(script);
 
   console.log(JSON.stringify(syntax, null, 2));
 
   instrument_ast(syntax);
 
-  var instrumented_file = "var FN_TABLE = {};\n" + escodegen.generate(syntax);
+  var instrumented_file = (first_time ? "var FN_TABLE = {};\n" : "") + escodegen.generate(syntax);
 
   console.log(instrumented_file);
 
@@ -193,8 +224,9 @@ var reload = function(new_script, old_script) {
     var fn_body = escodegen.generate(changed_function_ast.declarations[0].init);
     var fn_name = changed_function_ast.declarations[0].id.name;
     var table_name = get_lookup(fn_name);
+    var instrumented_fn = instrument("___x = " + fn_body);// "___x = " is a hack to make it return the value. function declarations dont generally return anything. 
 
-    FN_TABLE[table_name] = eval("x =" + fn_body); // "x = " is a hack to make it return the value. function declarations dont generally return anything. 
+    FN_TABLE[table_name] = eval(instrumented_fn); 
 
     //need to rewrite to use FN_TABLE via instrument()
 };
@@ -202,12 +234,12 @@ var reload = function(new_script, old_script) {
 var scan = function() {
   for (var i = 0; i < uris.length; i++) {
     var uri = uris[i];
-    var script = $.ajax({url: uri, async: false, dataType: 'text' }).responseText; // Fun fax: if you don't flag it as text, jQuery will "intelligently" assume it to be javascript and recursively eval the same file over and over until the browser crashes.
+    var script = $.ajax({url: uri, async: false, dataType: 'text', cache: false }).responseText; // Fun fax: if you don't flag it as text, jQuery will "intelligently" assume it to be javascript and recursively eval the same file over and over until the browser crashes.
 
     if (!loaded_scripts[uri]) {
       loaded_scripts[uri] = script;
 
-      $.globalEval(instrument(script));
+      $.globalEval(instrument(script, true));
     } else {
       if (loaded_scripts[uri] != script) {
         console.log("reload of " + uri);
