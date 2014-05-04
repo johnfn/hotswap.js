@@ -1,11 +1,10 @@
-var scripts = document.getElementsByTagName("script");
+esprima = require('esprima');
+escodegen = require('escodegen');
+
+var scripts ;
 var uris = [];
 var loaded_scripts = {};
 var function_name_to_lookup = {};
-
-for (var i = 0; i < scripts.length; i++) {
-  uris.push(scripts[i].getAttribute('src'));
-}
 
 uris = ["test.js"];
 
@@ -43,10 +42,14 @@ var put_lookup = function(name) {
         function_name_to_lookup[name] = "FN_" + uid;
         ++uid;
     } else {
-        console.err("function " + name + " previously defined. I not smart enough to deal with this case yet.");
+        console.log("function " + name + " previously defined. I not smart enough to deal with this case yet.");
     }
 
     return function_name_to_lookup[name];
+}
+
+function dbgast(ast) {
+    console.log(JSON.stringify(ast, null, 2));
 }
 
 /*
@@ -74,6 +77,11 @@ var instrument_ast = function(ast) {
         return;
     }
 
+    if (ast.type == "AssignmentExpression") {
+        instrument_ast(ast.left);
+        instrument_ast(ast.right);
+    }
+
     if (ast.type == "CallExpression") {
       instrument_ast(ast.callee);
       
@@ -89,7 +97,7 @@ var instrument_ast = function(ast) {
         var fn_names = parse_variable_decls_for_function_names(ast.declarations);
 
         if (fn_names.length > 1)  {
-            console.err("wat, i can't do multiple definitions in the same declaration block... go away.");
+            console.log("wat, i can't do multiple definitions in the same declaration block... go away.");
         }
 
         var fn_name = fn_names[0];
@@ -128,13 +136,9 @@ var instrument = function(script, first_time) {
 
   var syntax = esprima.parse(script);
 
-  console.log(JSON.stringify(syntax, null, 2));
-
   instrument_ast(syntax);
 
   var instrumented_file = (first_time ? "var FN_TABLE = {};\n" : "") + escodegen.generate(syntax);
-
-  console.log(instrumented_file);
 
   return instrumented_file;
 };
@@ -164,8 +168,6 @@ var get_change_location = function(new_script, old_script) {
         }
     }
 
-    console.log("line: " + line + " column: " + column);
-
     return [line, column];
 }
 
@@ -182,7 +184,7 @@ var find_changed_function = function(ast, line, col) {
     if (!good) return;
 
     if (ast.declarations && ast.declarations.length > 1) {
-        console.err("holy crap multiple declarations time to die"); //TODO
+        console.log("holy crap multiple declarations time to die"); //TODO
     }
 
     if (ast.type == "VariableDeclaration" && ast.declarations[0].init.type == "FunctionExpression") {
@@ -258,4 +260,9 @@ var hotswap = function(script) {
     uris.push(script);
 };
 
-setInterval(scan, 100);
+if (module) {
+    module.exports.instrument = instrument;
+} else {
+    scripts = document.getElementsByTagName("script");
+    setInterval(scan, 100);
+}
