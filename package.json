@@ -1,0 +1,43 @@
+{
+  "name": "hotswap.js",
+  "version": "0.0.0",
+  "description": "hotswapping javascript code in the browser!",
+  "main": "swapper.js",
+  "directories": {
+    "test": "test"
+  },
+  "dependencies": {
+    "escodegen": "~1.3.2",
+    "esprima": "~1.2.0",
+    "istanbul": "~0.2.8",
+    "should": "~3.3.1"
+  },
+  "devDependencies": {
+    "mocha": "~1.18.2"
+  },
+  "scripts": {
+    "test": "mocha"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/johnfn/hotswap.js.git"
+  },
+  "keywords": [
+    "hotswap",
+    "live",
+    "reloading",
+    "reload",
+    "live",
+    "coding"
+  ],
+  "scripts" : {
+    "//" : "can use -R spec/ to test entire folder.",
+    "coverage": "node ./node_modules/istanbul/lib/cli.js cover ./node_modules/mocha/bin/_mocha -- --ui bdd spec/test.js -t 5000 && open coverage/lcov-report/index.html"
+  },
+  "author": "johnfn",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/johnfn/hotswap.js/issues"
+  },
+  "homepage": "https://github.com/johnfn/hotswap.js"
+}
