@@ -10,6 +10,8 @@ describe('Herpin', function() {
         var _return;
         var instrumented;
 
+        swapper.__clear_table();
+
         try {
             instrumented = swapper.instrument(js);
             eval(instrumented);
