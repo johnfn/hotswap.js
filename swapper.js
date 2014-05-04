@@ -41,9 +41,16 @@ function dbgast(ast) {
 
  It's a destructive modification of the ast; it doesn't return anything.
  */
-var uid=0;
 var instrument_ast = function(ast, fns) {
     assert(fns);
+
+    var get_uid = function() {
+        if (!fns._uid) {
+            fns._uid = 0;
+        }
+
+        return fns._uid++;
+    }
 
     var get_lookup = function(name) { // TODO needs a rename
         return fns[name];
@@ -51,8 +58,7 @@ var instrument_ast = function(ast, fns) {
 
     var put_lookup = function(name) {
         if (! (name in fns)) {
-            fns[name] = "FN_" + uid;
-            ++uid;
+            fns[name] = "FN_" + get_uid();
         } else {
             console.log("function " + name + " previously defined. I not smart enough to deal with this case yet.");
         }

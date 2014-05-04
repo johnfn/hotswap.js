@@ -36,8 +36,7 @@ describe('Herpin', function() {
         FN_TABLE['FN_1']().should.equal(2);
     })
 
-    // what... this should pass.
-    it.skip("should replace function calls correctly", function() {
+    it("should replace function calls correctly", function() {
       run("var f = function() { return 1; }; _return = f();").should.equal(1);
 
       should.exist(FN_TABLE['FN_0']);

@@ -32,7 +32,8 @@
   ],
   "scripts" : {
     "//" : "can use -R spec/ to test entire folder.",
-    "coverage": "node ./node_modules/istanbul/lib/cli.js cover ./node_modules/mocha/bin/_mocha -- --ui bdd spec/test.js -t 5000 && open coverage/lcov-report/index.html"
+    "coverage": "node ./node_modules/istanbul/lib/cli.js cover ./node_modules/mocha/bin/_mocha -- --ui bdd spec/test.js -t 5000 && open coverage/lcov-report/index.html",
+    "test": "mocha spec/test.js"
   },
   "author": "johnfn",
   "license": "MIT",
