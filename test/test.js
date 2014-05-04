@@ -18,14 +18,23 @@ describe('Herpin', function() {
             console.log("err looks like this, good luck: " + e);
         }
 
-        FN_TABLE = {};
-
         return _return;
     }
+
+    afterEach(function() {
+        FN_TABLE = {};
+        swapper.__clear_table();
+    })
 
     it("should be sane", function() {
         run('_return = 2;').should.equal(2);
     });
+
+    it("should fill out the FN_TABLE correctly", function() {
+        run("var f = function() { return 1; }; var g = function() { return 2; }");
+        FN_TABLE['FN_0']().should.equal(1);
+        FN_TABLE['FN_1']().should.equal(2);
+    })
 
     it("should replace function calls correctly", function() {
       run("var f = function() { return 1; }; _return = f();").should.equal(1);

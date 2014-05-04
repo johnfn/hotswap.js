@@ -262,6 +262,7 @@ var hotswap = function(script) {
 
 if (module) {
     module.exports.instrument = instrument;
+    module.exports.__clear_table = function() { function_name_to_lookup = {}; };
 } else {
     scripts = document.getElementsByTagName("script");
     setInterval(scan, 100);
