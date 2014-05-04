@@ -4,7 +4,6 @@ escodegen = require('escodegen');
 var scripts ;
 var uris = [];
 var loaded_scripts = {};
-var function_name_to_lookup = {};
 
 uris = ["test.js"];
 
@@ -32,22 +31,6 @@ var parse_variable_decls_for_function_names = function(decls) {
     return results;
 };
 
-var get_lookup = function(name) { // TODO needs a rename
-    return function_name_to_lookup[name];
-}
-
-var uid=0;
-var put_lookup = function(name) {
-    if (! (name in function_name_to_lookup)) {
-        function_name_to_lookup[name] = "FN_" + uid;
-        ++uid;
-    } else {
-        console.log("function " + name + " previously defined. I not smart enough to deal with this case yet.");
-    }
-
-    return function_name_to_lookup[name];
-}
-
 function dbgast(ast) {
     console.log(JSON.stringify(ast, null, 2));
 }
@@ -58,7 +41,25 @@ function dbgast(ast) {
 
  It's a destructive modification of the ast; it doesn't return anything.
  */
-var instrument_ast = function(ast) {
+var uid=0;
+var instrument_ast = function(ast, fns) {
+    assert(fns);
+
+    var get_lookup = function(name) { // TODO needs a rename
+        return fns[name];
+    }
+
+    var put_lookup = function(name) {
+        if (! (name in fns)) {
+            fns[name] = "FN_" + uid;
+            ++uid;
+        } else {
+            console.log("function " + name + " previously defined. I not smart enough to deal with this case yet.");
+        }
+
+        return fns[name];
+    }
+
     var decls = [];
 
     if (ast.type == "Identifier") {
@@ -72,26 +73,25 @@ var instrument_ast = function(ast) {
     }
 
     if (ast.type == "ExpressionStatement") {
-        instrument_ast(ast.expression);
+        instrument_ast(ast.expression, fns);
 
         return;
     }
 
     if (ast.type == "AssignmentExpression") {
-        instrument_ast(ast.left);
-        instrument_ast(ast.right);
+        instrument_ast(ast.left, fns);
+        instrument_ast(ast.right, fns);
     }
 
     if (ast.type == "CallExpression") {
-      instrument_ast(ast.callee);
+      instrument_ast(ast.callee, fns);
       
       if (ast.arguments) {
           for (var i = 0; i < ast.arguments.length; i++) {
-              instrument_ast(ast.arguments[i]);
+              instrument_ast(ast.arguments[i], fns);
           }
       }
     }
-
 
     if (ast.type === "VariableDeclaration") {
         var fn_names = parse_variable_decls_for_function_names(ast.declarations);
@@ -101,7 +101,7 @@ var instrument_ast = function(ast) {
         }
 
         var fn_name = fn_names[0];
-        instrument_ast(ast.declarations[0].init);
+        instrument_ast(ast.declarations[0].init, fns);
         var rightside = escodegen.generate(ast.declarations[0].init);
         var leftside = "FN_TABLE['" + put_lookup(fn_name) + "']";
 
@@ -116,7 +116,7 @@ var instrument_ast = function(ast) {
     if (ast.type == "Program") {
         if (ast.body) {
             for (var i = 0; i < ast.body.length; i++) {
-                instrument_ast(ast.body[i]);
+                instrument_ast(ast.body[i], fns);
             }
         }
     }
@@ -124,7 +124,7 @@ var instrument_ast = function(ast) {
     if (ast.type == "FunctionExpression") {
         if (ast.body && ast.body.body) {
             for (var i = 0; i < ast.body.body.length; i++) {
-                instrument_ast(ast.body.body[i]);
+                instrument_ast(ast.body.body[i], fns);
             }
         }
     }
@@ -136,7 +136,7 @@ var instrument = function(script, first_time) {
 
   var syntax = esprima.parse(script);
 
-  instrument_ast(syntax);
+  instrument_ast(syntax, {});
 
   var instrumented_file = (first_time ? "var FN_TABLE = {};\n" : "") + escodegen.generate(syntax);
 
@@ -262,7 +262,6 @@ var hotswap = function(script) {
 
 if (module) {
     module.exports.instrument = instrument;
-    module.exports.__clear_table = function() { function_name_to_lookup = {}; };
 } else {
     scripts = document.getElementsByTagName("script");
     setInterval(scan, 100);

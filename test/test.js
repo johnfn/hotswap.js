@@ -10,8 +10,6 @@ describe('Herpin', function() {
         var _return;
         var instrumented;
 
-        swapper.__clear_table();
-
         try {
             instrumented = swapper.instrument(js);
             eval(instrumented);
@@ -25,7 +23,6 @@ describe('Herpin', function() {
 
     afterEach(function() {
         FN_TABLE = {};
-        swapper.__clear_table();
     })
 
     it("should be sane", function() {
