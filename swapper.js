@@ -1,5 +1,7 @@
-esprima = require('esprima');
-escodegen = require('escodegen');
+if (typeof module !== 'undefined') {
+	esprima = require('esprima');
+	escodegen = require('escodegen');
+}
 
 var scripts ;
 var uris = [];
@@ -312,7 +314,7 @@ var hotswap = function(script) {
     uris.push(script);
 };
 
-if (module) {
+if (typeof module !== 'undefined') {
     module.exports.instrument = instrument;
     module.exports.find_all_functions = find_all_functions;
 } else {
