@@ -49,9 +49,26 @@ describe('Herpin', function() {
       FN_TABLE['FN_0']().should.equal(1);
     });
 
-    it("can find all functions", function() {
-        //var result = swapper.find_all_functions();
+    it("can find all var functions", function() {
+        var result = swapper.find_all_functions(esprima.parse("var a = function(){}; var b = function(){};"));
+
+        result.should.containEql("a");
+        result.should.containEql("b");
     });
+
+    it("can find all hoisted functions", function() {
+        var result = swapper.find_all_functions(esprima.parse("function a(){}; function b(){};"));
+
+        result.should.containEql("a");
+        result.should.containEql("b");
+    });
+
+    it("can find nested functions", function() {
+        var result = swapper.find_all_functions(esprima.parse("var a = function(){ var b = function(){}; };"));
+
+        result.should.containEql("a");
+        result.should.containEql("b");
+    })
 
     it.skip("can deal with non-var functions", function() {
         run("function f() { return 9; }; _return = f();").should.equal(9);

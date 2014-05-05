@@ -35,6 +35,45 @@ function dbgast(ast) {
     console.log(JSON.stringify(ast, null, 2));
 }
 
+var find_all_functions = function(ast) {
+    function recurse_on_array(ast) {
+        var result = [];
+
+        for (var i = 0; i < ast.length; i++) {
+            var functions = find_all_functions(ast[i]);
+
+            console.log("here it is", functions);
+            result.push.apply(result, functions);
+        }
+
+        return result;
+    };
+
+    switch (ast.type) {
+        case "Program":
+            return recurse_on_array(ast.body);
+        case "ExpressionStatement":
+            return find_all_functions(ast.expression);
+        case "AssignmentExpression":
+            return recurse_on_array([ast.left, ast.right]);
+        case "VariableDeclaration":
+            return recurse_on_array(ast.declarations);
+        case "EmptyStatement":
+            return [];
+        case "FunctionDeclaration":
+            return [ast.id.name];
+        case "VariableDeclarator":
+            if (ast.init.type == "FunctionExpression") {
+                return ast.id.name;
+            } else {
+                return [];
+            }
+        default:
+            console.log("dont recognize ", ast.type);
+            return [];
+    }
+}
+
 /*
  The task of instrument_ast is to replace all references to functions within AST with references to our table of functions instead. 
  This allows us to hotswap in a new function later if required.
@@ -102,7 +141,7 @@ var instrument_ast = function(ast, fns) {
     if (ast.type === "VariableDeclaration") {
         var fn_names = parse_variable_decls_for_function_names(ast.declarations);
 
-        if (fn_names.length > 1)  {
+        if (fn_names.length > 1)  {// TODO incredibly silly since i can just recurse and keep an eye out for VariableDeclarators.
             console.log("wat, i can't do multiple definitions in the same declaration block... go away.");
         }
 
@@ -268,6 +307,7 @@ var hotswap = function(script) {
 
 if (module) {
     module.exports.instrument = instrument;
+    module.exports.find_all_functions = find_all_functions;
 } else {
     scripts = document.getElementsByTagName("script");
     setInterval(scan, 100);
