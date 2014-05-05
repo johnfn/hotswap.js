@@ -56,6 +56,13 @@ describe('Herpin', function() {
         result.should.containEql("b");
     });
 
+    it("can find a list of functions", function() {
+        var result = swapper.find_all_functions(esprima.parse("var a = function(){}, b = function(){};"));
+
+        result.should.containEql("a");
+        result.should.containEql("b");
+    });
+
     it("can find all hoisted functions", function() {
         var result = swapper.find_all_functions(esprima.parse("function a(){}; function b(){};"));
 
