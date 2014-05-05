@@ -42,7 +42,6 @@ var find_all_functions = function(ast) {
         for (var i = 0; i < ast.length; i++) {
             var functions = find_all_functions(ast[i]);
 
-            console.log("here it is", functions);
             result.push.apply(result, functions);
         }
 
@@ -60,11 +59,19 @@ var find_all_functions = function(ast) {
             return recurse_on_array(ast.declarations);
         case "EmptyStatement":
             return [];
+        case "FunctionExpression":
+            return find_all_functions(ast.body);
+        case "BlockStatement":
+            return recurse_on_array(ast.body);
         case "FunctionDeclaration":
-            return [ast.id.name];
+            var functions = find_all_functions(ast.body);
+            functions.push(ast.id.name);
+            return functions;
         case "VariableDeclarator":
             if (ast.init.type == "FunctionExpression") {
-                return ast.id.name;
+                var functions = find_all_functions(ast.init);
+                functions.push(ast.id.name);
+                return functions;
             } else {
                 return [];
             }
