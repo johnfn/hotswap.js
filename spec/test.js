@@ -77,7 +77,7 @@ describe('Herpin', function() {
         result.should.containEql("b");
     })
 
-    it.skip("can deal with non-var functions", function() {
+    it("can deal with non-var functions", function() {
         run("function f() { return 9; }; _return = f();").should.equal(9);
 
         should.exist(FN_TABLE['FN_0']);

@@ -54,8 +54,12 @@ var find_all_functions = function(ast) {
     };
 
     switch (ast.type) {
+        case "Literal":
+            return [];
         case "Program":
             return recurse_on_array(ast.body);
+        case "CallExpression":
+            return recurse_on_array(ast.arguments);
         case "ExpressionStatement":
             return find_all_functions(ast.expression);
         case "AssignmentExpression":
@@ -92,28 +96,15 @@ var find_all_functions = function(ast) {
 
  It's a destructive modification of the ast; it doesn't return anything.
  */
+ //TODO rewrite with case statement... clearer.
 var instrument_ast = function(ast, fns) {
     assert(fns);
 
-    var get_uid = function() {
-        if (!fns._uid) {
-            fns._uid = 0;
-        }
-
-        return fns._uid++;
-    }
-
     var get_lookup = function(name) { // TODO needs a rename
-        return fns[name];
-    }
-
-    var put_lookup = function(name) {
-        if (! (name in fns)) {
-            fns[name] = "FN_" + get_uid();
-        } else {
-            console.log("function " + name + " previously defined. I not smart enough to deal with this case yet.");
+        if (!(name in fns)) {
+            // TODO ensure name is part of a set of safe js toplevel functions e.g. setInterval
+            return null;
         }
-
         return fns[name];
     }
 
@@ -160,7 +151,8 @@ var instrument_ast = function(ast, fns) {
         var fn_name = fn_names[0];
         instrument_ast(ast.declarations[0].init, fns);
         var rightside = escodegen.generate(ast.declarations[0].init);
-        var leftside = "FN_TABLE['" + put_lookup(fn_name) + "']";
+        //TODO
+        var leftside = "FN_TABLE['" + get_lookup(fn_name) + "']";
 
         var gen = esprima.parse(leftside + "=" + rightside);
 
@@ -193,6 +185,11 @@ var instrument = function(script, file_name, first_time) {
 
   var syntax = esprima.parse(script);
   var fn_table = {};
+  var functions = find_all_functions(syntax);
+
+  for (var i = 0; i < functions.length; i++) {
+    fn_table[functions[i]] = "FN_" + i;
+  }
 
   instrument_ast(syntax, fn_table);
 
