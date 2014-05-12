@@ -3,9 +3,12 @@ if (typeof module !== 'undefined') {
 	escodegen = require('escodegen');
 }
 
-var scripts ;
+var scripts;
+var function_tables = {};
 var uris = [];
 var loaded_scripts = {};
+
+var FN_TABLE = {};
 
 uris = ["test.js"];
 
@@ -185,12 +188,15 @@ var instrument_ast = function(ast, fns) {
 
 };
 
-var instrument = function(script, first_time) {
+var instrument = function(script, file_name, first_time) {
   if (!first_time) first_time = false;
 
   var syntax = esprima.parse(script);
+  var fn_table = {};
 
-  instrument_ast(syntax, {});
+  instrument_ast(syntax, fn_table);
+
+  function_tables[file_name] = fn_table;
 
   var instrumented_file = (first_time ? "var FN_TABLE = {};\n" : "") + escodegen.generate(syntax);
 
@@ -265,7 +271,7 @@ var find_changed_function = function(ast, line, col) {
     return;
 }
 
-var reload = function(new_script, old_script) {
+var reload = function(new_script, old_script, file_name) {
     // Attempt to find the location at which they differ, then walk the AST and find the corresponding node and mark it.
     // Then, find the enclosing function, rewrite it and reload it into the FN_TABLE.
 
@@ -279,7 +285,7 @@ var reload = function(new_script, old_script) {
 
     var fn_body = escodegen.generate(changed_function_ast.declarations[0].init);
     var fn_name = changed_function_ast.declarations[0].id.name;
-    var table_name = get_lookup(fn_name);
+    var table_name = function_tables[file_name][fn_name];
     var instrumented_fn = instrument("___x = " + fn_body);// "___x = " is a hack to make it return the value. function declarations dont generally return anything. 
 
     FN_TABLE[table_name] = eval(instrumented_fn); 
@@ -295,7 +301,7 @@ var scan = function() {
     if (!loaded_scripts[uri]) {
       loaded_scripts[uri] = script;
 
-      $.globalEval(instrument(script, true));
+      $.globalEval(instrument(script, uri, true));
     } else {
       if (loaded_scripts[uri] != script) {
         console.log("reload of " + uri);
@@ -304,7 +310,7 @@ var scan = function() {
 
         loaded_scripts[uri] = script;
 
-        reload(script, old_script);
+        reload(script, old_script, uri);
       }
     }
   }
