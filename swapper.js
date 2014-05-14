@@ -110,37 +110,34 @@ var instrument_ast = function(ast, fns) {
         return fns[name];
     }
 
-    var decls = [];
-
-    if (ast.type == "Identifier") {
-        var lookup = get_lookup(ast.name);
-
-        if (lookup) {
-            ast.name = "FN_TABLE['" + lookup + "']";
+    var instrument_list = function(list) {
+        for (var i = 0; i < list.length; i++) {
+            instrument_ast(list[i], fns);
         }
-
-        return;
     }
 
-    if (ast.type == "ExpressionStatement") {
-        instrument_ast(ast.expression, fns);
+    switch (ast.type) {
+        case "Identifier":
+            var lookup = get_lookup(ast.name);
 
-        return;
-    }
+            if (lookup) {
+                ast.name = "FN_TABLE['" + lookup + "']";
+            }
 
-    if (ast.type == "AssignmentExpression") {
-        instrument_ast(ast.left, fns);
-        instrument_ast(ast.right, fns);
-    }
-
-    if (ast.type == "CallExpression") {
-      instrument_ast(ast.callee, fns);
-      
-      if (ast.arguments) {
-          for (var i = 0; i < ast.arguments.length; i++) {
-              instrument_ast(ast.arguments[i], fns);
-          }
-      }
+            break;
+        case "ExpressionStatement":
+            instrument_ast(ast.expression, fns);
+            break;
+        case "AssignmentExpression":
+            instrument_list([ast.left, ast.right]);
+            break;
+        case "CallExpression":
+            instrument_ast(ast.callee);
+            instrument_list(ast.arguments);
+            break;
+        case "Program":
+            instrument_list(ast.body);
+            break;
     }
 
     if (ast.type === "VariableDeclaration") {
@@ -160,16 +157,6 @@ var instrument_ast = function(ast, fns) {
 
         for (var key in ast) delete ast[key];
         for (var key in gen.body[0]) ast[key] = gen.body[0][key];
-
-        return;
-    }
-
-    if (ast.type == "Program") {
-        if (ast.body) {
-            for (var i = 0; i < ast.body.length; i++) {
-                instrument_ast(ast.body[i], fns);
-            }
-        }
     }
 
     // completely rewrite this to be a variable declaration now. 
