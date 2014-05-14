@@ -54,8 +54,10 @@ var find_all_functions = function(ast) {
     };
 
     switch (ast.type) {
-        case "Literal":
+        case "Literal": case "Identifier": 
             return [];
+        case "ReturnStatement":
+            return find_all_functions(ast.argument);
         case "Program":
             return recurse_on_array(ast.body);
         case "CallExpression":
@@ -170,12 +172,15 @@ var instrument_ast = function(ast, fns) {
         }
     }
 
-    if (ast.type == "FunctionExpression") {
-        if (ast.body && ast.body.body) {
-            for (var i = 0; i < ast.body.body.length; i++) {
-                instrument_ast(ast.body.body[i], fns);
-            }
-        }
+    // completely rewrite this to be a variable declaration now. 
+    if (ast.type == "FunctionDeclaration") {
+        var fn_name = ast.id.name;
+
+        ast.id.name = ""; // a bit of a hack - I'm transforming a functiondeclaration e.g. "function a() {} " into a functionexpression e.g. "function() {}" so that i can then go and immediately assign it.
+        var newNode = esprima.parse("FN_TABLE['" + get_lookup(fn_name) + "']" + " = " + escodegen.generate(ast));
+
+        for (var key in ast) delete ast[key];
+        for (var key in newNode) ast[key] = newNode[key];
     }
 
 };
