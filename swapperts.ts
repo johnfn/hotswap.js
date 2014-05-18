@@ -13,77 +13,18 @@ declare var escodegen {
 };
 */
 
-// Eventually this will be a more complicated namespacing thing.
-// But for now...
-class FunctionFinder {
-
-  /*
-  find_all_functions(ast:esprima.Syntax.Node) {
-      function recurse_on_array(ast:esprima.Syntax.Node[]) {
-          var result = [];
-
-          for (var i = 0; i < ast.length; i++) {
-              var functions = this.find_all_functions(ast[i]);
-
-              result.push.apply(result, functions);
-          }
-
-          return result;
-      };
-
-      switch (ast.type) {
-          case "Literal": case "Identifier":
-              return [];
-          case "ReturnStatement":
-              return this.find_all_functions(ast.argument);
-          case "Program":
-              return recurse_on_array(ast.body);
-          case "CallExpression":
-              return recurse_on_array(ast.arguments);
-          case "ExpressionStatement":
-              return find_all_functions(ast.expression);
-          case "AssignmentExpression":
-              return recurse_on_array([ast.left, ast.right]);
-          case "VariableDeclaration":
-              return recurse_on_array(ast.declarations);
-          case "EmptyStatement":
-              return [];
-          case "FunctionExpression":
-              return find_all_functions(ast.body);
-          case "BlockStatement":
-              return recurse_on_array(ast.body);
-          case "FunctionDeclaration":
-              var functions = find_all_functions(ast.body);
-              functions.push(ast.id.name);
-              return functions;
-          case "VariableDeclarator":
-              if (ast.init.type == "FunctionExpression") {
-                  var functions = find_all_functions(ast.init);
-                  functions.push(ast.id.name);
-                  return functions;
-              } else {
-                  return [];
-              }
-          default:
-              console.log("dont recognize ", ast.type);
-              return [];
-      }
-  }
-  */
-}
-
 class ASTDescender {
   callbacks:{[key: string]: (ast:E.Node) => void};
-  result:E.Node;
+  result:E.Program;
 
-  constructor(ast:E.Node, callbacks:{[key: string]: (ast:E.Node) => void}) {
+  constructor(ast:E.Program, callbacks:{[key: string]: (ast:E.Node) => void}) {
     this.callbacks = callbacks;
 
     this.instrument_ast(ast);
     this.result = ast;
   }
 
-  ast():E.Node {
+  ast():E.Program {
     return this.result;
   }
 
@@ -195,8 +136,27 @@ class Instrumentor {
     this.script = script;
   }
 
+  get_functions(ast:E.Program):string[] {
+    var result:string[] = [];
+
+    new ASTDescender(ast, {
+      "VariableDeclarator" : function(ast: E.VariableDeclarator) {
+        if (ast.init.type == "FunctionExpression") {
+          result.push(ast.id.name);
+        }
+      },
+      "FunctionDeclaration": function(ast: E.FunctionDeclaration) {
+        result.push(ast.id.name);
+      }
+    });
+
+    return result;
+  }
+
   instrument():E.Program {
     var ast:E.Program = esprima.parse(this.script);
+
+    console.log(this.get_functions(ast));
 
     var astd:ASTDescender = new ASTDescender(ast, {
       "VariableDeclarator" : function(ast: E.VariableDeclarator) {

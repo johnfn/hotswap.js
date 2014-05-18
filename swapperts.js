@@ -7,14 +7,6 @@ declare var escodegen {
 function generate(ast:esprima.Syntax.Program);
 };
 */
-// Eventually this will be a more complicated namespacing thing.
-// But for now...
-var FunctionFinder = (function () {
-    function FunctionFinder() {
-    }
-    return FunctionFinder;
-})();
-
 var ASTDescender = (function () {
     function ASTDescender(ast, callbacks) {
         this.callbacks = callbacks;
@@ -130,8 +122,27 @@ var Instrumentor = (function () {
     function Instrumentor(script) {
         this.script = script;
     }
+    Instrumentor.prototype.get_functions = function (ast) {
+        var result = [];
+
+        new ASTDescender(ast, {
+            "VariableDeclarator": function (ast) {
+                if (ast.init.type == "FunctionExpression") {
+                    result.push(ast.id.name);
+                }
+            },
+            "FunctionDeclaration": function (ast) {
+                result.push(ast.id.name);
+            }
+        });
+
+        return result;
+    };
+
     Instrumentor.prototype.instrument = function () {
         var ast = esprima.parse(this.script);
+
+        console.log(this.get_functions(ast));
 
         var astd = new ASTDescender(ast, {
             "VariableDeclarator": function (ast) {
