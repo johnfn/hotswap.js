@@ -70,42 +70,25 @@ class FunctionFinder {
       }
   }
   */
-
 }
 
-/*
- * Given a normal JS file passed in as a string:
- *
- * 1. Give every function a unique id.
- * 2. Store each function in a table by that unique id.
- * 3. Rewrite lookups to use the table and the unique id.
- *
- * This means we can hotswap in new function definitions later
- * simply by updating the table.
- */
-class Instrumentor {
-  script: string;
+class ASTDescender {
+  callbacks:{[key: string]: (ast:E.Node) => void};
+  result:E.Node;
 
-  constructor(script:string) {
-    this.script = script;
-  }
-
-  instrument():E.Program {
-    var ast:E.Program = esprima.parse(this.script);
+  constructor(ast:E.Node, callbacks:{[key: string]: (ast:E.Node) => void}) {
+    this.callbacks = callbacks;
 
     this.instrument_ast(ast);
-    return ast;
+    this.result = ast;
   }
 
-  // Helper for recursive function.
-  instrument_list(list:E.Node[]) {
-    for (var i = 0; i < list.length; i++) {
-      this.instrument_ast(list[i]);
-    }
+  ast():E.Node {
+    return this.result;
   }
 
   /*
-   * After `instrument_ast`, the rest of the functions are all dynamically dispatched
+   * After `instrument_ast`, the rest of the functions in this class will be dynamically dispatched
    * from `instrument_ast` as we recursively descend the AST, based on the type of the
    * node. This is many so we can take advantage of the types without having to invent
    * new variables for each recasted variable, as we might if we had a case or long if
@@ -115,23 +98,25 @@ class Instrumentor {
     var dispatch_name:string = "instrument_" + ast.type;
 
     if (this[dispatch_name]) {
+      if (this.callbacks[ast.type]) {
+        this.callbacks[ast.type](ast)
+      }
+
       this[dispatch_name](ast);
     } else {
       console.log("(instrument_ast) dispatch not found for ", dispatch_name);
     }
   }
 
+  // Helper for the recursive functions.
+  private instrument_list(list:E.Node[]) {
+    for (var i = 0; i < list.length; i++) {
+      this.instrument_ast(list[i]);
+    }
+  }
     // e.g. "a"
   private instrument_Identifier(ast:E.Identifier) {
-    // TODO if name is special...
 
-    /*
-    var lookup = get_lookup(ast.name);
-
-    if (lookup) {
-        ast.name = "FN_TABLE['" + lookup + "']";
-    }
-    */
   }
 
   // e.g. "7"
@@ -161,9 +146,6 @@ class Instrumentor {
   }
 
   private instrument_VariableDeclarator(ast:E.VariableDeclarator) {
-    if (ast.init.type == "FunctionExpression") {
-      ast.id.name = "$" + ast.id.name;
-    }
   }
 
   private instrument_VariableDeclaration(ast:E.VariableDeclaration) {
@@ -193,6 +175,38 @@ class Instrumentor {
 
   private instrument_FunctionExpression(ast:E.FunctionExpression) {
     this.instrument_ast(ast.body);
+  }
+}
+
+/*
+ * Given a normal JS file passed in as a string:
+ *
+ * 1. Give every function a unique id.
+ * 2. Store each function in a table by that unique id.
+ * 3. Rewrite lookups to use the table and the unique id.
+ *
+ * This means we can hotswap in new function definitions later
+ * simply by updating the table.
+ */
+class Instrumentor {
+  script: string;
+
+  constructor(script:string) {
+    this.script = script;
+  }
+
+  instrument():E.Program {
+    var ast:E.Program = esprima.parse(this.script);
+
+    var astd:ASTDescender = new ASTDescender(ast, {
+      "VariableDeclarator" : function(ast: E.VariableDeclarator) {
+        if (ast.init.type == "FunctionExpression") {
+          ast.id.name = "$" + ast.id.name;
+        }
+      }
+    });
+
+    return astd.ast();
   }
 }
 
