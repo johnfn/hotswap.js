@@ -5,6 +5,10 @@ declare var module;
 declare var escodegen;
 
 import E = esprima.Syntax;
+
+var to_ast = esprima.parse;
+var from_ast = escodegen.generate;
+
 /*
 Why doesn't this work? :/
 
@@ -153,16 +157,41 @@ class Instrumentor {
     return result;
   }
 
+  generate_ids(list:string[]): {[key: string]: number} {
+    var result: {[key: string]: number} = {};
+
+    for (var i = 0; i < list.length; i++) {
+      result[list[i]] = i;
+    }
+
+    return result;
+  }
+
+  replace_node(target:E.Node, replaceWith:E.Node) {
+    for (var key in target) delete target[key];
+    for (var key in replaceWith) target[key] = replaceWith[key];
+  }
+
   instrument():E.Program {
     var ast:E.Program = esprima.parse(this.script);
+    var functions:string[] = this.get_functions(ast);
+    var function_ids:{[key: string]: number} = this.generate_ids(functions);
+    var self:Instrumentor = this;
 
-    console.log(this.get_functions(ast));
+    // TODO rewrite variable decls e.g var a=5, b=7 to be on separate lines.
+    // This is because you can't rewrite var a=function(){} to be var FN_TABLE[...] -
+    // you need to remove the var statement, and it would be even more confusing
+    // with multiple decls on a single line.
 
     var astd:ASTDescender = new ASTDescender(ast, {
       "VariableDeclarator" : function(ast: E.VariableDeclarator) {
         if (ast.init.type == "FunctionExpression") {
           ast.id.name = "$" + ast.id.name;
         }
+      },
+
+      "FunctionDeclaration": function(ast: E.FunctionDeclaration) {
+        self.replace_node(ast, to_ast("FN_TABLE[" + function_ids[ast.id.name] + "] = " + from_ast(ast)));
       }
     });
 

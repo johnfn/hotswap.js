@@ -1,6 +1,9 @@
 /// <reference path="typings/esprima/esprima.d.ts" />
 /// <reference path="typings/jquery/jquery.d.ts" />
 
+var to_ast = esprima.parse;
+var from_ast = escodegen.generate;
+
 /*
 Why doesn't this work? :/
 declare var escodegen {
@@ -139,16 +142,41 @@ var Instrumentor = (function () {
         return result;
     };
 
+    Instrumentor.prototype.generate_ids = function (list) {
+        var result = {};
+
+        for (var i = 0; i < list.length; i++) {
+            result[list[i]] = i;
+        }
+
+        return result;
+    };
+
+    Instrumentor.prototype.replace_node = function (target, replaceWith) {
+        for (var key in target)
+            delete target[key];
+        for (var key in replaceWith)
+            target[key] = replaceWith[key];
+    };
+
     Instrumentor.prototype.instrument = function () {
         var ast = esprima.parse(this.script);
+        var functions = this.get_functions(ast);
+        var function_ids = this.generate_ids(functions);
+        var self = this;
 
-        console.log(this.get_functions(ast));
-
+        // TODO rewrite variable decls e.g var a=5, b=7 to be on separate lines.
+        // This is because you can't rewrite var a=function(){} to be var FN_TABLE[...] -
+        // you need to remove the var statement, and it would be even more confusing
+        // with multiple decls on a single line.
         var astd = new ASTDescender(ast, {
             "VariableDeclarator": function (ast) {
                 if (ast.init.type == "FunctionExpression") {
                     ast.id.name = "$" + ast.id.name;
                 }
+            },
+            "FunctionDeclaration": function (ast) {
+                self.replace_node(ast, to_ast("FN_TABLE[" + function_ids[ast.id.name] + "] = " + from_ast(ast)));
             }
         });
 
