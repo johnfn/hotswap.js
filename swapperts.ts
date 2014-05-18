@@ -90,20 +90,39 @@ class Instrumentor {
     this.script = script;
   }
 
-  instrument() {
-    this.instrument_ast(esprima.parse(this.script), {});
+  instrument():E.Program {
+    var ast:E.Program = esprima.parse(this.script);
+
+    this.instrument_ast(ast);
+    return ast;
   }
 
   // Helper for recursive function.
-  instrument_list(list:E.Node[], fns:{[key:string]: string}) {
+  instrument_list(list:E.Node[]) {
     for (var i = 0; i < list.length; i++) {
-      this.instrument_ast(list[i], fns);
+      this.instrument_ast(list[i]);
     }
   }
 
-  instrument_Identifier(ast:E.Identifier) {
-    // e.g. "a"
+  /*
+   * After `instrument_ast`, the rest of the functions are all dynamically dispatched
+   * from `instrument_ast` as we recursively descend the AST, based on the type of the
+   * node. This is many so we can take advantage of the types without having to invent
+   * new variables for each recasted variable, as we might if we had a case or long if
+   * statement.
+   */
+  instrument_ast(ast:E.Node) {
+    var dispatch_name:string = "instrument_" + ast.type;
 
+    if (this[dispatch_name]) {
+      this[dispatch_name](ast);
+    } else {
+      console.log("(instrument_ast) dispatch not found for ", dispatch_name);
+    }
+  }
+
+    // e.g. "a"
+  private instrument_Identifier(ast:E.Identifier) {
     // TODO if name is special...
 
     /*
@@ -115,12 +134,12 @@ class Instrumentor {
     */
   }
 
-  instrument_Literal(ast:E.Identifier) {
-    // e.g. "7"
+  // e.g. "7"
+  private instrument_Literal(ast:E.Identifier) {
   }
 
-  instrument_MemberExpression(ast:E.Identifier) {
-    // e.g. "console.log"
+  // e.g. "console.log"
+  private instrument_MemberExpression(ast:E.Identifier) {
 
     // TODO:
     //
@@ -137,51 +156,43 @@ class Instrumentor {
     // That would work, I think. (Famous last words.)
   }
 
-  instrument_ExpressionStatement(ast:E.ExpressionStatement) {
+  private instrument_FunctionDeclaration(ast:E.FunctionDeclaration) {
+    this.instrument_list(ast.body);
+  }
+
+  private instrument_VariableDeclarator(ast:E.VariableDeclarator) {
+    if (ast.init.type == "FunctionExpression") {
+      ast.id.name = "$" + ast.id.name;
+    }
+  }
+
+  private instrument_VariableDeclaration(ast:E.VariableDeclaration) {
+    this.instrument_list(ast.declarations);
+  }
+
+  private instrument_ExpressionStatement(ast:E.ExpressionStatement) {
     this.instrument_ast(ast.expression);
   }
 
-  instrument_ast(ast:E.Node) {
-    var dispatch_name:string = "instrument_" + ast.type;
+  private instrument_AssignmentExpression(ast:E.AssignmentExpression) {
+    this.instrument_list([ast.left, ast.right]);
+  }
 
-    if (this[dispatch_name]) {
-      this[dispatch_name]();
-    } else {
-      console.log("(instrument_ast) dispatch not found for ", dispatch_name);
-    }
+  private instrument_CallExpression(ast:E.CallExpression) {
+    this.instrument_ast(ast.callee);
+    this.instrument_list(ast.arguments);
+  }
 
-    switch (ast.type) {
-        case "VariableDeclaration": case "FunctionDeclaration": break;
+  private instrument_BlockStatement(ast:E.BlockStatement) {
+    this.instrument_list(ast.body);
+  }
 
-        case "ExpressionStatement":
-            var e = <E.ExpressionStatement>ast;
-            this.instrument_ast(e, fns);
+  private instrument_Program(ast:E.Program) {
+    this.instrument_list(ast.body);
+  }
 
-            break;
-        case "AssignmentExpression":
-            var a = <E.AssignmentExpression>ast;
-            this.instrument_list([a.left, a.right], fns);
-
-            break;
-        case "CallExpression":
-            this.instrument_ast(ast.callee, fns);
-            this.instrument_list(ast.arguments, fns);
-            break;
-        case "BlockStatement":
-            this.instrument_list(ast.body, fns);
-            break;
-        case "Program":
-            this.instrument_list(ast.body, fns);
-            break;
-        case "FunctionExpression":
-            this.instrument_ast(ast.body, fns);
-            break;
-        default:
-            console.log("(instrument_ast) dont recognize ", ast.type);
-
-            debugger;
-            break;
-    }
+  private instrument_FunctionExpression(ast:E.FunctionExpression) {
+    this.instrument_ast(ast.body);
   }
 }
 
@@ -238,6 +249,9 @@ class Scanner {
       if (!this.loaded_scripts[script_name]) {
         this.loaded_scripts[script_name] = script;
 
+        var ins:Instrumentor = new Instrumentor(script)
+        console.log(escodegen.generate(ins.instrument()));
+
         // TODO enable the following once it's working.
         // $.globalEval(instrument(script, script_name, true));
       } else {
@@ -252,6 +266,7 @@ class Scanner {
     }
   }
 }
+
 if (typeof module === 'undefined') {
   var scanner:Scanner = new Scanner();
 

@@ -117,12 +117,31 @@ var instrument_ast = function(ast, fns) {
     }
 
     switch (ast.type) {
+        case "VariableDeclaration": case "FunctionDeclaration": break;
+
         case "Identifier":
             var lookup = get_lookup(ast.name);
 
             if (lookup) {
                 ast.name = "FN_TABLE['" + lookup + "']";
             }
+
+            break;
+        case "Literal": break;
+        case "MemberExpression":
+            // TODO:
+            // 
+            // Maybe what would be best would be to do something like var a = function(){}; gets rewritten to also have a.id = genUID() after it (comma operator brah)
+            // More precisely, (var a = function(){}, a.id=genUID(), FN_TABLE[a.id] = a, a); (as to correctly return the function)
+            // Then lookups would be like this: a() turns into FN_TABLE[a.id]() and herp.derp just becomes FN_TABLE[herp.derp.id]().
+            //
+            // The only thing left is to wrap the lookup in an anonymous function so it doesn't become "cached" in cases like setTimeout. e.g.
+            //
+            // setTimeout(a) becomes setTimeout(function(){ return FN_TABLE[a.id]; })
+            // 
+            // This is only necessary when passing around uncalled functions.
+
+            // That would work, I think. (Famous last words.)
 
             break;
         case "ExpressionStatement":
@@ -132,11 +151,22 @@ var instrument_ast = function(ast, fns) {
             instrument_list([ast.left, ast.right]);
             break;
         case "CallExpression":
-            instrument_ast(ast.callee);
+            instrument_ast(ast.callee, fns);
             instrument_list(ast.arguments);
+            break;
+        case "BlockStatement":
+            instrument_list(ast.body);
             break;
         case "Program":
             instrument_list(ast.body);
+            break;
+        case "FunctionExpression":
+            instrument_ast(ast.body, fns);
+            break;
+        default:
+            console.log("(instrument_ast) dont recognize ", ast.type);
+
+            debugger;
             break;
     }
 
