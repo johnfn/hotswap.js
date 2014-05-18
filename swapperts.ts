@@ -6,7 +6,23 @@ declare var escodegen;
 
 import E = esprima.Syntax;
 
-var to_ast = esprima.parse;
+var to_ast = function(s:string):E.Node {
+  var ast:E.Program = esprima.parse(s);
+
+  // If it's just a simple statement, return it without curly brackets.
+
+  if (ast.body.length == 1) {
+    return ast.body[0];
+  }
+
+  // this is designed to be used nested within from_ast, but escodegen
+  // gets (understandably) confused if it finds Program statements nested
+  // within an AST. so we get rid of that.
+
+  ast.type = "BlockStatement";
+  return ast;
+}
+
 var from_ast = escodegen.generate;
 
 /*
@@ -47,6 +63,7 @@ class ASTDescender {
         this.callbacks[ast.type](ast)
       }
 
+      dispatch_name = "instrument_" + ast.type; // we need to reassign because the callback could have changed the node type.
       this[dispatch_name](ast);
     } else {
       console.log("(instrument_ast) dispatch not found for ", dispatch_name);
@@ -187,6 +204,17 @@ class Instrumentor {
       "VariableDeclarator" : function(ast: E.VariableDeclarator) {
         if (ast.init.type == "FunctionExpression") {
           ast.id.name = "$" + ast.id.name;
+        }
+      },
+
+      "CallExpression": function(ast: E.CallExpression) {
+        if (ast.callee.type == "Identifier") {
+          var id:E.Identifier = <E.Identifier><any>ast.callee;
+          var fn_name = id.name;
+
+          if (fn_name in function_ids) {
+            self.replace_node(ast.callee, to_ast('FN_TABLE[' + function_ids[id.name] + ']').expression);
+          }
         }
       },
 
