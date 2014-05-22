@@ -25,6 +25,13 @@ function generate(ast:esprima.Syntax.Program);
 };
 */
 var ASTDescender = (function () {
+    /*
+    * If you call the onlyRecurseOn callback, the traversal will only recurse on the part of the AST
+    * that you pass into the callback. This is designed to avoid infinite recursion if you modify
+    * the AST to contain it's old self within some larger structure.
+    * e.g. if you take {{ ast }} and do if (blah()) {{ ast }}, you should use this callback to avoid
+    * stack overflows.
+    */
     function ASTDescender(ast, callbacks) {
         this.callbacks = callbacks;
 

@@ -37,6 +37,13 @@ class ASTDescender {
   callbacks:{[key: string]: (ast:E.Node, onlyRecurse:any) => void};
   result:E.Program;
 
+  /*
+   * If you call the onlyRecurseOn callback, the traversal will only recurse on the part of the AST
+   * that you pass into the callback. This is designed to avoid infinite recursion if you modify
+   * the AST to contain it's old self within some larger structure.
+   * e.g. if you take {{ ast }} and do if (blah()) {{ ast }}, you should use this callback to avoid
+   * stack overflows.
+   */
   constructor(ast:E.Program, callbacks:{[key: string]: (ast:E.Node, callback:any) => void}) {
     this.callbacks = callbacks;
 
