@@ -44,14 +44,24 @@ var ASTDescender = (function () {
     */
     ASTDescender.prototype.instrument_ast = function (ast) {
         var dispatch_name = "instrument_" + ast.type;
+        var self = this;
 
         if (this[dispatch_name]) {
+            var onlyRecurse = false;
+
             if (this.callbacks[ast.type]) {
-                this.callbacks[ast.type](ast);
+                this.callbacks[ast.type](ast, function (onlyThisAST) {
+                    onlyRecurse = true;
+
+                    dispatch_name = "instrument_" + ast.type; // we need to reassign because the callback could have changed the node type.
+                    self[dispatch_name](ast);
+                });
             }
 
-            dispatch_name = "instrument_" + ast.type; // we need to reassign because the callback could have changed the node type.
-            this[dispatch_name](ast);
+            if (!onlyRecurse) {
+                dispatch_name = "instrument_" + ast.type; // we need to reassign because the callback could have changed the node type.
+                this[dispatch_name](ast);
+            }
         } else {
             console.log("(instrument_ast) dispatch not found for ", dispatch_name);
         }
@@ -90,6 +100,10 @@ var ASTDescender = (function () {
 
     ASTDescender.prototype.instrument_FunctionDeclaration = function (ast) {
         this.instrument_list(ast.body);
+    };
+
+    ASTDescender.prototype.instrument_SequenceExpression = function (ast) {
+        this.instrument_list(ast.expressions);
     };
 
     ASTDescender.prototype.instrument_VariableDeclarator = function (ast) {
@@ -177,17 +191,24 @@ var Instrumentor = (function () {
     Instrumentor.prototype.instrument = function () {
         var ast = esprima.parse(this.script);
         var functions = this.get_functions(ast);
+
+        // TODO: As long as we have this line, we're going to continue to have namespacing issues...
         var function_ids = this.generate_ids(functions);
         var self = this;
+        var semicolon = ";";
 
         // TODO rewrite variable decls e.g var a=5, b=7 to be on separate lines.
         // This is because you can't rewrite var a=function(){} to be var FN_TABLE[...] -
         // you need to remove the var statement, and it would be even more confusing
         // with multiple decls on a single line.
         var astd = new ASTDescender(ast, {
-            "VariableDeclarator": function (ast) {
-                if (ast.init.type == "FunctionExpression") {
-                    ast.id.name = "$" + ast.id.name;
+            "VariableDeclaration": function (ast, onlyRecurseOn) {
+                var decl = ast.declarations[0];
+
+                if (decl.init.type == "FunctionExpression") {
+                    onlyRecurseOn(decl);
+
+                    self.replace_node(ast, to_ast("var " + from_ast(decl) + semicolon + decl.id.name + ".id = " + function_ids[decl.id.name] + semicolon + "FN_TABLE[" + decl.id.name + ".id" + "] = " + decl.id.name));
                 }
             },
             "CallExpression": function (ast) {
@@ -196,12 +217,15 @@ var Instrumentor = (function () {
                     var fn_name = id.name;
 
                     if (fn_name in function_ids) {
-                        self.replace_node(ast.callee, to_ast('FN_TABLE[' + function_ids[id.name] + ']').expression);
+                        self.replace_node(ast.callee, to_ast('FN_TABLE[' + fn_name + ".id" + ']').expression);
                     }
                 }
             },
-            "FunctionDeclaration": function (ast) {
-                self.replace_node(ast, to_ast("FN_TABLE[" + function_ids[ast.id.name] + "] = " + from_ast(ast)));
+            "FunctionDeclaration": function (ast, onlyRecurseOn) {
+                onlyRecurseOn(ast);
+
+                // This introduces a block statement, but there isn't really a(n easy) way to get around that...
+                self.replace_node(ast, to_ast(from_ast(ast) + semicolon + ast.id.name + ".id = " + function_ids[ast.id.name] + semicolon + "FN_TABLE[" + ast.id.name + ".id" + "] = " + ast.id.name));
             }
         });
 
