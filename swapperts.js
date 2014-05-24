@@ -241,6 +241,84 @@ var Instrumentor = (function () {
     return Instrumentor;
 })();
 
+var Differ = (function () {
+    function Differ(new_script, old_script) {
+        this.new_script = new_script;
+        this.old_script = old_script;
+
+        this.get_change_location();
+    }
+    Differ.prototype.get_change_location = function () {
+        // Find line and column differences.
+        var new_lines = this.new_script.split("\n");
+        var old_lines = this.old_script.split("\n");
+        var line = -1;
+        var column = -1;
+
+        for (line = 0; line < Math.min(new_lines.length, old_lines.length); line++) {
+            if (new_lines[line] != old_lines[line]) {
+                break;
+            }
+        }
+
+        var new_line = new_lines[line];
+        var old_line = old_lines[line];
+
+        ++line; // lines are 1-indexed.
+
+        for (column = 0; column < Math.min(new_line.length, old_line.length); column++) {
+            if (new_line[column] != old_line[column]) {
+                break;
+            }
+        }
+
+        this.line = line;
+        this.column = column;
+    };
+
+    Differ.prototype.find_changed_function = function (ast, line, col) {
+        var loc = ast.loc;
+
+        var good = (loc.start.line <= line && loc.end.line >= line);
+        if (line == loc.start.line && line == loc.end.line) {
+            good == good && (loc.start.column <= col && loc.end.col >= col);
+        }
+
+        if (!good)
+            return;
+
+        if (ast.declarations && ast.declarations.length > 1) {
+            console.log("holy crap multiple declarations time to die"); //TODO
+        }
+
+        if (ast.type == "VariableDeclaration" && ast.declarations[0].init.type == "FunctionExpression") {
+            return ast;
+        }
+
+        if (ast.body) {
+            for (var i = 0; i < ast.body.length; i++) {
+                var result = find_changed_function(ast.body[i], line, col);
+
+                if (result)
+                    return result;
+            }
+        }
+
+        if (ast.arguments) {
+            for (var i = 0; i < ast.arguments.length; i++) {
+                var result = find_changed_function(ast.arguments[i], line, col);
+
+                if (result)
+                    return result;
+            }
+        }
+
+        console.log("fail to parse:: ", ast);
+        return;
+    };
+    return Differ;
+})();
+
 /*
 * Scan script files for updates.
 */
@@ -263,12 +341,12 @@ var Scanner = (function () {
         var i = new Instrumentor(new_script);
 
         console.log(escodegen.generate(i.instrument()));
+
         // Attempt to find the location at which they differ, then walk the AST and find the corresponding node and mark it.
         // Then, find the enclosing function, rewrite it and reload it into the FN_TABLE.
         // A slightly better way to do this would be to directly diff the ASTs...
+        var diff = new Differ(new_script, old_script);
         /*
-        var line_column = get_change_location(new_script, old_script);
-        
         var ast = esprima.parse(new_script, {loc: true});
         
         var changed_function_ast = find_changed_function(ast, line_column[0], line_column[1]);
@@ -292,9 +370,9 @@ var Scanner = (function () {
                 this.loaded_scripts[script_name] = script;
 
                 var ins = new Instrumentor(script);
-                console.log(escodegen.generate(ins.instrument()));
-                // TODO enable the following once it's working.
-                // $.globalEval(instrument(script, script_name, true));
+
+                $.globalEval("var FN_TABLE = {};");
+                $.globalEval(escodegen.generate(ins.instrument()));
             } else {
                 if (this.loaded_scripts[script_name] != script) {
                     var old_script = this.loaded_scripts[script_name];

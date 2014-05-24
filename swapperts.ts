@@ -267,6 +267,91 @@ class Instrumentor {
   }
 }
 
+class Differ {
+  line:number;
+  column:number;
+
+  private new_script:string;
+  private old_script:string;
+
+  constructor(new_script:string, old_script:string) {
+    this.new_script = new_script;
+    this.old_script = old_script;
+
+    this.get_change_location();
+  }
+
+  get_change_location() {
+      // Find line and column differences.
+
+      var new_lines:string[] = this.new_script.split("\n");
+      var old_lines:string[] = this.old_script.split("\n");
+      var line:number = -1;
+      var column:number = -1;
+
+      for (line = 0; line < Math.min(new_lines.length, old_lines.length); line++) {
+          if (new_lines[line] != old_lines[line]) {
+              break;
+          }
+      }
+
+      var new_line:string = new_lines[line];
+      var old_line:string = old_lines[line];
+
+      ++line; // lines are 1-indexed.
+
+      for (column = 0; column < Math.min(new_line.length, old_line.length); column++) {
+          if (new_line[column] != old_line[column]) {
+              break;
+          }
+      }
+
+      this.line = line;
+      this.column = column;
+  }
+
+
+  find_changed_function(ast:E.Program, line:number, col:number) {
+      var loc:esprima.Syntax.LineLocation = ast.loc;
+
+      var good = (loc.start.line <= line && loc.end.line >= line);
+      if (line == loc.start.line && line == loc.end.line) {
+          good == good && (loc.start.column <= col && loc.end.column >= col)
+      }
+
+      if (!good) return;
+
+      //TODO
+
+      if (ast.declarations && ast.declarations.length > 1) {
+          console.log("holy crap multiple declarations time to die"); //TODO
+      }
+
+      if (ast.type == "VariableDeclaration" && ast.declarations[0].init.type == "FunctionExpression") {
+          return ast;
+      }
+
+      if (ast.body) {
+          for (var i = 0; i < ast.body.length; i++) {
+              var result = find_changed_function(ast.body[i], line, col);
+
+              if (result) return result;
+          }
+      }
+
+      if (ast.arguments) {
+          for (var i = 0; i < ast.arguments.length; i++) {
+              var result = find_changed_function(ast.arguments[i], line, col);
+
+              if (result) return result;
+          }
+      }
+
+      console.log("fail to parse:: ", ast);
+      return;
+  }
+}
+
 /*
  * Scan script files for updates.
  */
@@ -294,9 +379,9 @@ class Scanner {
 
     // A slightly better way to do this would be to directly diff the ASTs...
 
-    /*
-    var line_column = get_change_location(new_script, old_script);
+    var diff:Differ = new Differ(new_script, old_script);
 
+    /*
     var ast = esprima.parse(new_script, {loc: true});
 
     var changed_function_ast = find_changed_function(ast, line_column[0], line_column[1]);
@@ -321,10 +406,9 @@ class Scanner {
         this.loaded_scripts[script_name] = script;
 
         var ins:Instrumentor = new Instrumentor(script)
-        console.log(escodegen.generate(ins.instrument()));
 
-        // TODO enable the following once it's working.
-        // $.globalEval(instrument(script, script_name, true));
+        $.globalEval("var FN_TABLE = {};")
+        $.globalEval(escodegen.generate(ins.instrument()));
       } else {
         if (this.loaded_scripts[script_name] != script) {
           var old_script = this.loaded_scripts[script_name];

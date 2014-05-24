@@ -54,7 +54,7 @@ var find_all_functions = function(ast) {
     };
 
     switch (ast.type) {
-        case "Literal": case "Identifier": 
+        case "Literal": case "Identifier":
             return [];
         case "ReturnStatement":
             return find_all_functions(ast.argument);
@@ -93,7 +93,7 @@ var find_all_functions = function(ast) {
 }
 
 /*
- The task of instrument_ast is to replace all references to functions within AST with references to our table of functions instead. 
+ The task of instrument_ast is to replace all references to functions within AST with references to our table of functions instead.
  This allows us to hotswap in a new function later if required.
 
  It's a destructive modification of the ast; it doesn't return anything.
@@ -130,7 +130,7 @@ var instrument_ast = function(ast, fns) {
         case "Literal": break;
         case "MemberExpression":
             // TODO:
-            // 
+            //
             // Maybe what would be best would be to do something like var a = function(){}; gets rewritten to also have a.id = genUID() after it (comma operator brah)
             // More precisely, (var a = function(){}, a.id=genUID(), FN_TABLE[a.id] = a, a); (as to correctly return the function)
             // Then lookups would be like this: a() turns into FN_TABLE[a.id]() and herp.derp just becomes FN_TABLE[herp.derp.id]().
@@ -138,7 +138,7 @@ var instrument_ast = function(ast, fns) {
             // The only thing left is to wrap the lookup in an anonymous function so it doesn't become "cached" in cases like setTimeout. e.g.
             //
             // setTimeout(a) becomes setTimeout(function(){ return FN_TABLE[a.id]; })
-            // 
+            //
             // This is only necessary when passing around uncalled functions.
 
             // That would work, I think. (Famous last words.)
@@ -189,7 +189,7 @@ var instrument_ast = function(ast, fns) {
         for (var key in gen.body[0]) ast[key] = gen.body[0][key];
     }
 
-    // completely rewrite this to be a variable declaration now. 
+    // completely rewrite this to be a variable declaration now.
     if (ast.type == "FunctionDeclaration") {
         var fn_name = ast.id.name;
 
@@ -305,9 +305,9 @@ var reload = function(new_script, old_script, file_name) {
     var fn_body = escodegen.generate(changed_function_ast.declarations[0].init);
     var fn_name = changed_function_ast.declarations[0].id.name;
     var table_name = function_tables[file_name][fn_name];
-    var instrumented_fn = instrument("___x = " + fn_body);// "___x = " is a hack to make it return the value. function declarations dont generally return anything. 
+    var instrumented_fn = instrument("___x = " + fn_body);// "___x = " is a hack to make it return the value. function declarations dont generally return anything.
 
-    FN_TABLE[table_name] = eval(instrumented_fn); 
+    FN_TABLE[table_name] = eval(instrumented_fn);
 
     //need to rewrite to use FN_TABLE via instrument()
 };
