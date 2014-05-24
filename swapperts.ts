@@ -34,7 +34,11 @@ declare var escodegen {
 */
 
 class ASTDescender {
-  callbacks:{[key: string]: (ast:E.Node, onlyRecurse:any) => void};
+  callbacks:{[key: string]: (ast:E.Node) => void};
+  onlyThisAST:(ast:E.Node) => void;
+  stop:() => void;
+
+  ast:E.Program;
   result:E.Program;
 
   /*
@@ -44,14 +48,17 @@ class ASTDescender {
    * e.g. if you take {{ ast }} and do if (blah()) {{ ast }}, you should use this callback to avoid
    * stack overflows.
    */
-  constructor(ast:E.Program, callbacks:{[key: string]: (ast:E.Node, callback:any) => void}) {
-    this.callbacks = callbacks;
-
-    this.instrument_ast(ast);
-    this.result = ast;
+  constructor(ast:E.Program) {
+    this.ast = ast;
   }
 
-  ast():E.Program {
+  start(callbacks:{[key: string]: (ast:E.Node) => void}) {
+    this.callbacks = callbacks;
+    this.instrument_ast(this.ast);
+    this.result = this.ast;
+  }
+
+  processedAST():E.Program {
     return this.result;
   }
 
@@ -68,17 +75,27 @@ class ASTDescender {
 
     if (this[dispatch_name]) {
       var onlyRecurse:boolean = false;
+      var stop:boolean = false;
 
       if (this.callbacks[ast.type]) {
-        this.callbacks[ast.type](ast, function(onlyThisAST:E.Node) {
+        // provide the requisite callbacks w/ proper closures
+        this.onlyThisASTCallback = function(onlyThisAST:E.Node) {
           onlyRecurse = true;
 
           dispatch_name = "instrument_" + ast.type; // we need to reassign because the callback could have changed the node type.
-          self[dispatch_name](ast);
-        });
+          if (!stop) {
+            self[dispatch_name](ast);
+          }
+        }
+
+        this.stopCallback = function() {
+          stop = true;
+        }
+
+        this.callbacks[ast.type](ast);
       }
 
-      if (!onlyRecurse) {
+      if (!onlyRecurse && !stop) {
         dispatch_name = "instrument_" + ast.type; // we need to reassign because the callback could have changed the node type.
         this[dispatch_name](ast);
       }
@@ -223,13 +240,13 @@ class Instrumentor {
     // you need to remove the var statement, and it would be even more confusing
     // with multiple decls on a single line.
 
-    var astd:ASTDescender = new ASTDescender(ast, {
-
-      "VariableDeclaration" : function(ast: E.VariableDeclaration, onlyRecurseOn: (ast:E.Node) => void) {
+    var astd:ASTDescender = new ASTDescender(ast);
+    astd.start({
+      "VariableDeclaration" : function(ast: E.VariableDeclaration) {
         var decl = ast.declarations[0];
 
         if (decl.init.type == "FunctionExpression") {
-          onlyRecurseOn(decl);
+          astd.onlyThisAST(decl);
 
           self.replace_node(ast, to_ast(
             "var " + from_ast(decl) +
@@ -250,8 +267,8 @@ class Instrumentor {
         }
       },
 
-      "FunctionDeclaration": function(ast: E.FunctionDeclaration, onlyRecurseOn: (ast:E.Node) => void) {
-        onlyRecurseOn(ast);
+      "FunctionDeclaration": function(ast: E.FunctionDeclaration) {
+        astd.onlyThisAST(ast);
 
         // This introduces a block statement, but there isn't really a(n easy) way to get around that...
         self.replace_node(ast,
@@ -263,7 +280,7 @@ class Instrumentor {
       }
     });
 
-    return astd.ast();
+    return astd.processedAST();
   }
 }
 
@@ -279,6 +296,7 @@ class Differ {
     this.old_script = old_script;
 
     this.get_change_location();
+    this.find_changed_function(esprima.parse(new_script, {loc: true}), this.line, this.col);
   }
 
   get_change_location() {
@@ -310,26 +328,39 @@ class Differ {
       this.column = column;
   }
 
+  find_changed_function(ast:E.Node, line:number, col:number) {
 
-  find_changed_function(ast:E.Program, line:number, col:number) {
-      var loc:esprima.Syntax.LineLocation = ast.loc;
+      var containsLineCol:(ast:E.Node, line:number, col:number) => boolean = function() {
+        var loc:esprima.Syntax.LineLocation = ast.loc;
 
-      var good = (loc.start.line <= line && loc.end.line >= line);
-      if (line == loc.start.line && line == loc.end.line) {
-          good == good && (loc.start.column <= col && loc.end.column >= col)
-      }
+        var good = (loc.start.line <= line && loc.end.line >= line);
+        if (line == loc.start.line && line == loc.end.line) {
+            good == good && (loc.start.column <= col && loc.end.column >= col)
+        }
 
-      if (!good) return;
+        return good;
+      };
 
       //TODO
 
-      if (ast.declarations && ast.declarations.length > 1) {
+      /*
+      var astd:ASTDescender = new ASTDescender(ast);
+      astd.start({
+        "VariableDeclaration" : function(ast: E.VariableDeclaration) {
+      */
+
+      if (ast.type == "VariableDeclaration") {
+        var vd:E.VariableDeclaration = <E.VariableDeclaration>ast;
+
+        if (vd.declarations.length > 1) {
           console.log("holy crap multiple declarations time to die"); //TODO
+        }
+
+        if (vd.declarations[0].init.type == "FunctionExpression") {
+          return ast;
+        }
       }
 
-      if (ast.type == "VariableDeclaration" && ast.declarations[0].init.type == "FunctionExpression") {
-          return ast;
-      }
 
       if (ast.body) {
           for (var i = 0; i < ast.body.length; i++) {

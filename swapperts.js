@@ -32,13 +32,16 @@ var ASTDescender = (function () {
     * e.g. if you take {{ ast }} and do if (blah()) {{ ast }}, you should use this callback to avoid
     * stack overflows.
     */
-    function ASTDescender(ast, callbacks) {
-        this.callbacks = callbacks;
-
-        this.instrument_ast(ast);
-        this.result = ast;
+    function ASTDescender(ast) {
+        this.ast = ast;
     }
-    ASTDescender.prototype.ast = function () {
+    ASTDescender.prototype.start = function (callbacks) {
+        this.callbacks = callbacks;
+        this.instrument_ast(this.ast);
+        this.result = this.ast;
+    };
+
+    ASTDescender.prototype.processedAST = function () {
         return this.result;
     };
 
@@ -55,17 +58,27 @@ var ASTDescender = (function () {
 
         if (this[dispatch_name]) {
             var onlyRecurse = false;
+            var stop = false;
 
             if (this.callbacks[ast.type]) {
-                this.callbacks[ast.type](ast, function (onlyThisAST) {
+                // provide the requisite callbacks w/ proper closures
+                this.onlyThisASTCallback = function (onlyThisAST) {
                     onlyRecurse = true;
 
                     dispatch_name = "instrument_" + ast.type; // we need to reassign because the callback could have changed the node type.
-                    self[dispatch_name](ast);
-                });
+                    if (!stop) {
+                        self[dispatch_name](ast);
+                    }
+                };
+
+                this.stopCallback = function () {
+                    stop = true;
+                };
+
+                this.callbacks[ast.type](ast);
             }
 
-            if (!onlyRecurse) {
+            if (!onlyRecurse && !stop) {
                 dispatch_name = "instrument_" + ast.type; // we need to reassign because the callback could have changed the node type.
                 this[dispatch_name](ast);
             }
@@ -208,12 +221,13 @@ var Instrumentor = (function () {
         // This is because you can't rewrite var a=function(){} to be var FN_TABLE[...] -
         // you need to remove the var statement, and it would be even more confusing
         // with multiple decls on a single line.
-        var astd = new ASTDescender(ast, {
-            "VariableDeclaration": function (ast, onlyRecurseOn) {
+        var astd = new ASTDescender(ast);
+        astd.start({
+            "VariableDeclaration": function (ast) {
                 var decl = ast.declarations[0];
 
                 if (decl.init.type == "FunctionExpression") {
-                    onlyRecurseOn(decl);
+                    astd.onlyThisAST(decl);
 
                     self.replace_node(ast, to_ast("var " + from_ast(decl) + semicolon + decl.id.name + ".id = " + function_ids[decl.id.name] + semicolon + "FN_TABLE[" + decl.id.name + ".id" + "] = " + decl.id.name));
                 }
@@ -228,15 +242,15 @@ var Instrumentor = (function () {
                     }
                 }
             },
-            "FunctionDeclaration": function (ast, onlyRecurseOn) {
-                onlyRecurseOn(ast);
+            "FunctionDeclaration": function (ast) {
+                astd.onlyThisAST(ast);
 
                 // This introduces a block statement, but there isn't really a(n easy) way to get around that...
                 self.replace_node(ast, to_ast(from_ast(ast) + semicolon + ast.id.name + ".id = " + function_ids[ast.id.name] + semicolon + "FN_TABLE[" + ast.id.name + ".id" + "] = " + ast.id.name));
             }
         });
 
-        return astd.ast();
+        return astd.processedAST();
     };
     return Instrumentor;
 })();
@@ -247,6 +261,7 @@ var Differ = (function () {
         this.old_script = old_script;
 
         this.get_change_location();
+        this.find_changed_function(esprima.parse(new_script, { loc: true }), this.line, this.col);
     }
     Differ.prototype.get_change_location = function () {
         // Find line and column differences.
@@ -277,22 +292,33 @@ var Differ = (function () {
     };
 
     Differ.prototype.find_changed_function = function (ast, line, col) {
-        var loc = ast.loc;
+        var containsLineCol = function () {
+            var loc = ast.loc;
 
-        var good = (loc.start.line <= line && loc.end.line >= line);
-        if (line == loc.start.line && line == loc.end.line) {
-            good == good && (loc.start.column <= col && loc.end.col >= col);
-        }
+            var good = (loc.start.line <= line && loc.end.line >= line);
+            if (line == loc.start.line && line == loc.end.line) {
+                good == good && (loc.start.column <= col && loc.end.column >= col);
+            }
 
-        if (!good)
-            return;
+            return good;
+        };
 
-        if (ast.declarations && ast.declarations.length > 1) {
-            console.log("holy crap multiple declarations time to die"); //TODO
-        }
+        //TODO
+        /*
+        var astd:ASTDescender = new ASTDescender(ast);
+        astd.start({
+        "VariableDeclaration" : function(ast: E.VariableDeclaration) {
+        */
+        if (ast.type == "VariableDeclaration") {
+            var vd = ast;
 
-        if (ast.type == "VariableDeclaration" && ast.declarations[0].init.type == "FunctionExpression") {
-            return ast;
+            if (vd.declarations.length > 1) {
+                console.log("holy crap multiple declarations time to die"); //TODO
+            }
+
+            if (vd.declarations[0].init.type == "FunctionExpression") {
+                return ast;
+            }
         }
 
         if (ast.body) {
