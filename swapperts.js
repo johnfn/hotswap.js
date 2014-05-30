@@ -60,21 +60,25 @@ var ASTDescender = (function () {
             var onlyRecurse = false;
             var stop = false;
 
+            // provide the requisite callbacks w/ proper closures
+            this.onlyThisAST = function (onlyThisAST) {
+                onlyRecurse = true;
+
+                dispatch_name = "instrument_" + ast.type; // we need to reassign because the callback could have changed the node type.
+                if (!stop) {
+                    self[dispatch_name](ast);
+                }
+            };
+
+            this.stop = function () {
+                stop = true;
+            };
+
+            if (this.callbacks["*"]) {
+                this.callbacks["*"](ast);
+            }
+
             if (this.callbacks[ast.type]) {
-                // provide the requisite callbacks w/ proper closures
-                this.onlyThisASTCallback = function (onlyThisAST) {
-                    onlyRecurse = true;
-
-                    dispatch_name = "instrument_" + ast.type; // we need to reassign because the callback could have changed the node type.
-                    if (!stop) {
-                        self[dispatch_name](ast);
-                    }
-                };
-
-                this.stopCallback = function () {
-                    stop = true;
-                };
-
                 this.callbacks[ast.type](ast);
             }
 
@@ -127,6 +131,7 @@ var ASTDescender = (function () {
     };
 
     ASTDescender.prototype.instrument_VariableDeclarator = function (ast) {
+        this.instrument_ast(ast.init);
     };
 
     ASTDescender.prototype.instrument_VariableDeclaration = function (ast) {
@@ -177,7 +182,9 @@ var Instrumentor = (function () {
     Instrumentor.prototype.get_functions = function (ast) {
         var result = [];
 
-        new ASTDescender(ast, {
+        var astd = new ASTDescender(ast);
+
+        astd.start({
             "VariableDeclarator": function (ast) {
                 if (ast.init.type == "FunctionExpression") {
                     result.push(ast.id.name);
@@ -261,7 +268,7 @@ var Differ = (function () {
         this.old_script = old_script;
 
         this.get_change_location();
-        this.find_changed_function(esprima.parse(new_script, { loc: true }), this.line, this.col);
+        this.find_changed_function(esprima.parse(new_script, { loc: true }), this.line, this.column);
     }
     Differ.prototype.get_change_location = function () {
         // Find line and column differences.
@@ -292,7 +299,7 @@ var Differ = (function () {
     };
 
     Differ.prototype.find_changed_function = function (ast, line, col) {
-        var containsLineCol = function () {
+        var containsLineCol = function (ast) {
             var loc = ast.loc;
 
             var good = (loc.start.line <= line && loc.end.line >= line);
@@ -303,44 +310,23 @@ var Differ = (function () {
             return good;
         };
 
-        //TODO
-        /*
-        var astd:ASTDescender = new ASTDescender(ast);
+        var astd = new ASTDescender(ast);
+        var result;
+
         astd.start({
-        "VariableDeclaration" : function(ast: E.VariableDeclaration) {
-        */
-        if (ast.type == "VariableDeclaration") {
-            var vd = ast;
-
-            if (vd.declarations.length > 1) {
-                console.log("holy crap multiple declarations time to die"); //TODO
+            "*": function (ast) {
+                if (!containsLineCol(ast))
+                    astd.stop();
+            },
+            "VariableDeclarator": function (ast) {
+                if (ast.init.type == "FunctionExpression") {
+                    result = ast;
+                }
             }
+        });
 
-            if (vd.declarations[0].init.type == "FunctionExpression") {
-                return ast;
-            }
-        }
-
-        if (ast.body) {
-            for (var i = 0; i < ast.body.length; i++) {
-                var result = find_changed_function(ast.body[i], line, col);
-
-                if (result)
-                    return result;
-            }
-        }
-
-        if (ast.arguments) {
-            for (var i = 0; i < ast.arguments.length; i++) {
-                var result = find_changed_function(ast.arguments[i], line, col);
-
-                if (result)
-                    return result;
-            }
-        }
-
-        console.log("fail to parse:: ", ast);
-        return;
+        // TODO
+        this.fn = result.id.name;
     };
     return Differ;
 })();
@@ -372,6 +358,8 @@ var Scanner = (function () {
         // Then, find the enclosing function, rewrite it and reload it into the FN_TABLE.
         // A slightly better way to do this would be to directly diff the ASTs...
         var diff = new Differ(new_script, old_script);
+
+        console.log(diff.fn);
         /*
         var ast = esprima.parse(new_script, {loc: true});
         
