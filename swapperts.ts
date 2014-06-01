@@ -198,9 +198,10 @@ class ASTDescender {
  */
 class Instrumentor {
   script: string;
-  function_ids:{[key: string]: number} = {};
+  function_ids:{[key: string]: number};
 
-  constructor(script:string) {
+  constructor(script:string, ids:{[key: string]: number} = undefined) {
+    this.function_ids = ids;
     this.script = script;
   }
 
@@ -224,7 +225,10 @@ class Instrumentor {
     return result;
   }
 
-  generate_ids(list:string[]): {[key: string]: number} {
+  generate_ids(ast:E.Program): {[key: string]: number} {
+    if (this.function_ids) return this.function_ids;
+
+    var list = this.get_functions(ast);
     var result: {[key: string]: number} = {};
 
     for (var i = 0; i < list.length; i++) {
@@ -241,9 +245,8 @@ class Instrumentor {
 
   instrument():E.Program {
     var ast:E.Program = esprima.parse(this.script);
-    var functions:string[] = this.get_functions(ast);
     // TODO: As long as we have this line, we're going to continue to have namespacing issues...
-    var function_ids:{[key: string]: number} = this.generate_ids(functions);
+    var function_ids:{[key: string]: number} = this.generate_ids(ast);
     var self:Instrumentor = this;
 
     //please don't read too much into these two variables - they're just to get my syntax highlighting working properly.
@@ -276,7 +279,8 @@ class Instrumentor {
           var id:E.Identifier = <E.Identifier><any>ast.callee;
           var fn_name = id.name;
 
-          if (fn_name in function_ids) {
+          // TODO: if variable is in scope
+          if (["setTimeout", "setInterval"].indexOf(fn_name) === -1) {
             self.replace_node(ast.callee, (<any> to_ast('FN_TABLE[' + fn_name + ".id" + ']')).expression);
           }
         }
@@ -419,7 +423,7 @@ class Scanner {
 
     if (id !== undefined) {
       var swapped_function = diff.fn_ast;
-      var instrumented_function = new Instrumentor("var " + from_ast(swapped_function)).instrument();
+      var instrumented_function = new Instrumentor("var " + from_ast(swapped_function), this.fns_to_ids[file_name]).instrument();
 
       FN_TABLE[id] = eval(from_ast(instrumented_function));
     } else {
