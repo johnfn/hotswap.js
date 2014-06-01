@@ -6,6 +6,8 @@ declare var escodegen;
 
 import E = esprima.Syntax;
 
+var FN_TABLE:{[key: number]: any} = {};
+
 var to_ast = function(s:string):E.Node {
   var ast:E.Program = esprima.parse(s);
 
@@ -78,6 +80,7 @@ class ASTDescender {
       var stop:boolean = false;
 
       // provide the requisite callbacks w/ proper closures
+      // should be called something like "recurseOnlyOnThisASTAndDoItRightNow!"
       this.onlyThisAST = function(onlyThisAST:E.Node) {
         onlyRecurse = true;
 
@@ -195,6 +198,7 @@ class ASTDescender {
  */
 class Instrumentor {
   script: string;
+  function_ids:{[key: string]: number} = {};
 
   constructor(script:string) {
     this.script = script;
@@ -241,7 +245,10 @@ class Instrumentor {
     // TODO: As long as we have this line, we're going to continue to have namespacing issues...
     var function_ids:{[key: string]: number} = this.generate_ids(functions);
     var self:Instrumentor = this;
+
+    //please don't read too much into these two variables - they're just to get my syntax highlighting working properly.
     var semicolon:string = ";";
+    var comma:string = ",";
 
     // TODO rewrite variable decls e.g var a=5, b=7 to be on separate lines.
     // This is because you can't rewrite var a=function(){} to be var FN_TABLE[...] -
@@ -288,6 +295,8 @@ class Instrumentor {
       }
     });
 
+    this.function_ids = function_ids;
+
     return astd.processedAST();
   }
 }
@@ -296,6 +305,7 @@ class Differ {
   line:number;
   column:number;
   fn:string;
+  fn_ast:E.Node;
 
   private new_script:string;
   private old_script:string;
@@ -308,9 +318,8 @@ class Differ {
     this.find_changed_function(esprima.parse(new_script, {loc: true}), this.line, this.column);
   }
 
+  // Find line and column differences.
   get_change_location() {
-      // Find line and column differences.
-
       var new_lines:string[] = this.new_script.split("\n");
       var old_lines:string[] = this.old_script.split("\n");
       var line:number = -1;
@@ -366,6 +375,7 @@ class Differ {
 
       // TODO
       this.fn = result.id.name;
+      this.fn_ast = result;
   }
 }
 
@@ -375,6 +385,7 @@ class Differ {
 class Scanner {
   scripts: string[] = [];
   loaded_scripts: {[key: string]: string} = {};
+  fns_to_ids: {[key: string]: {[key: string]: number}} = {};
 
   constructor() {
     setInterval(() => this.scan(), 100);
@@ -389,7 +400,7 @@ class Scanner {
 
     var i:Instrumentor = new Instrumentor(new_script);
 
-    console.log((<any>escodegen).generate(i.instrument()))
+    console.log((<any>escodegen).generate(i.instrument()));
 
     // Attempt to find the location at which they differ, then walk the AST and find the corresponding node and mark it.
     // Then, find the enclosing function, rewrite it and reload it into the FN_TABLE.
@@ -397,23 +408,23 @@ class Scanner {
     // A slightly better way to do this would be to directly diff the ASTs...
 
     var diff:Differ = new Differ(new_script, old_script);
+    var fn_name = diff.fn;
 
-    console.log(diff.fn);
+    if (!(fn_name in this.fns_to_ids[file_name])) {
+      // add new function to table, just loaded in.
+      // seems hard, you have to reload every fn that references the new fn
+    }
 
-    /*
-    var ast = esprima.parse(new_script, {loc: true});
+    var id = this.fns_to_ids[file_name][fn_name];
 
-    var changed_function_ast = find_changed_function(ast, line_column[0], line_column[1]);
+    if (id) {
+      var swapped_function = diff.fn_ast;
+      var instrumented_function = new Instrumentor("var " + from_ast(swapped_function)).instrument();
 
-    var fn_body = escodegen.generate(changed_function_ast.declarations[0].init);
-    var fn_name = changed_function_ast.declarations[0].id.name;
-    var table_name = function_tables[file_name][fn_name];
-    var instrumented_fn = instrument("___x = " + fn_body);// "___x = " is a hack to make it return the value. function declarations dont generally return anything.
-
-    FN_TABLE[table_name] = eval(instrumented_fn);
-    */
-
-    //need to rewrite to use FN_TABLE via instrument()
+      FN_TABLE[id] = eval(from_ast(instrumented_function));
+    } else {
+      console.log("function named " + fn_name + " in file " + file_name + " not found, are you trying to swap in a new function? I'm not that smart...");
+    }
   }
 
   scan() {
@@ -424,10 +435,12 @@ class Scanner {
       if (!this.loaded_scripts[script_name]) {
         this.loaded_scripts[script_name] = script;
 
-        var ins:Instrumentor = new Instrumentor(script)
+        var ins:Instrumentor = new Instrumentor(script);
 
         $.globalEval("var FN_TABLE = {};")
         $.globalEval(escodegen.generate(ins.instrument()));
+
+        this.fns_to_ids[script_name] = ins.function_ids;
       } else {
         if (this.loaded_scripts[script_name] != script) {
           var old_script = this.loaded_scripts[script_name];

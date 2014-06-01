@@ -1,4 +1,1 @@
- ☐ I don't currently correctly swap stuff like a.b(herpa); because i dont recognize a.b as a function call
- ☐ Even harder than that b/c who knows what a is??? May have to insert some js to do the lookup.
- ☐ Need to properly scope function names.
-   ☐ Also how to differentiate between two functions named a() in the function table... blah. some sort of x>y>a naming scheme? just annotating the ast?
+ ☐  I really need an indicator to say if the ts stuff has compiled.

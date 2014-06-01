@@ -5,6 +5,7 @@ var escodegen = require('escodegen');
 var swapper = require('../swapper.js');
 
 // TODO - recursive functions that immeditealy call themselves?
+// TODO - swapping in many functions simultaneously
 describe('Herpin', function() {
     var FN_TABLE = {};
 
