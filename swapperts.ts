@@ -417,7 +417,7 @@ class Scanner {
 
     var id = this.fns_to_ids[file_name][fn_name];
 
-    if (id) {
+    if (id !== undefined) {
       var swapped_function = diff.fn_ast;
       var instrumented_function = new Instrumentor("var " + from_ast(swapped_function)).instrument();
 
