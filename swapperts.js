@@ -366,30 +366,24 @@ var Scanner = (function () {
     Scanner.prototype.reload = function (new_script, old_script, file_name) {
         console.log("reload of " + file_name);
 
-        var i = new Instrumentor(new_script);
-
-        console.log(escodegen.generate(i.instrument()));
-
         // Attempt to find the location at which they differ, then walk the AST and find the corresponding node and mark it.
         // Then, find the enclosing function, rewrite it and reload it into the FN_TABLE.
         // A slightly better way to do this would be to directly diff the ASTs...
         var diff = new Differ(new_script, old_script);
         var fn_name = diff.fn;
 
-        if (!(fn_name in this.fns_to_ids[file_name])) {
-            // add new function to table, just loaded in.
-            // seems hard, you have to reload every fn that references the new fn
-        }
-
         var id = this.fns_to_ids[file_name][fn_name];
+        var swapped_function = diff.fn_ast;
 
         if (id !== undefined) {
-            var swapped_function = diff.fn_ast;
             var instrumented_function = new Instrumentor("var " + from_ast(swapped_function), this.fns_to_ids[file_name]).instrument();
 
             FN_TABLE[id] = eval(from_ast(instrumented_function));
         } else {
-            console.log("function named " + fn_name + " in file " + file_name + " not found, are you trying to swap in a new function? I'm not that smart...");
+            this.fns_to_ids[file_name][fn_name] = Object.keys(this.fns_to_ids[file_name]).length;
+
+            var i = new Instrumentor("var " + from_ast(diff.fn_ast), this.fns_to_ids[file_name]);
+            $.globalEval(escodegen.generate(i.instrument()));
         }
     };
 
